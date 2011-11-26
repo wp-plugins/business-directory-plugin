@@ -2873,11 +2873,13 @@ function wpbusdirman_managelistings()
 			query_posts('author='.$wpbusdirman_CUID.'&post_type='.$wpbdmposttype);
 			if ( have_posts() )
 			{
+				$count=0;
 				$html .= '<p>' . __("Your current listings are shown below. To edit a listing click the edit button. To delete a listing click the delete button.","WPBDM") . "</p>";
 				while (have_posts())
 				{
 					$html .= the_post();
-					$html .= wpbusdirman_post_excerpt();
+					$count++;
+					$html .= wpbusdirman_post_excerpt($count);
 				}
 				$html .= '<div class="navigation">';
 				if(function_exists('wp_pagenavi'))
