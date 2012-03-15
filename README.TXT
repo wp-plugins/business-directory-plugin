@@ -1,25 +1,42 @@
 === Business Directory Plugin ===
-Contributors: A. Lewis
-Tags: business directory,ads,classifieds
+Contributors: http://businessdirectoryplugin.com
+Donate link: http://businessdirectoryplugin.com/premium-modules/
+Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget
 Requires at least: 3.0
-Tested up to: 3.2.1
-Stable tag: trunk
+Tested up to: 3.3.1
+Last Updated: 2012-Mar-14
+Stable tag: tags/2.0
 
-Business Directory Plugin (Formerly WP Business Directory Manager) is a flexible plugin designed for business directories but useful for a variety of other purposes.  
+Business Directory Plugin for WordPress (Formerly WP Business Directory Manager) is a flexible plugin for WordPress business directory creation but useful for a variety of other purposes.  Create any WordPress directory with it. 
 
 == Description ==
 
-Business Directory Plugin (Formerly WP Business Directory Manager) is designed to be used for managing a business directory listing service on your WordPress powered website. All form fields are editable so you can collect and display any kind of data from business information for a business directory, to personal information for a dating profile. Please refer to the README.TXT file in the plugin folder or the "Usage Docs" section accessible via the "Other Notes" tab above for details on how to setup and use the plugin. This plugin is the new version of my original business directory plugin "WP Business Directory Manager". If you are currently using WP Business Directory Manager (A. Lewis) then please switch to Business Directory Plugin. Once you activate Business Directory Plugin it will pick up your WP Business Directory Manager data. It's the same plugin only with a new name, new website and a small number of bug fixes and improvements. Please report any bugs you find via http://businessdirectoryplugin.com  
+Business Directory Plugin for WordPress (Formerly WP Business Directory Manager) is designed to be used for managing a WordPress business directory listing service on your website. 
 
+All form fields are editable so you can collect and display any kind of data from business information for a business directory, to personal information for a dating profile. Please refer to the README.TXT file in the plugin folder or the "Usage Docs" section accessible via the "Other Notes" tab above for details on how to setup and use the plugin. 
 
+This plugin is the new version of the original business directory plugin "WP Business Directory Manager". If you are currently using WP Business Directory Manager (by A. Lewis) then please switch to Business Directory Plugin. Once you activate Business Directory Plugin it will pick up your WP Business Directory Manager data. It's the same plugin only with a new name, new website and a number of bug fixes and improvements. 
 
-For more information and support please visit http://businessdirectoryplugin.com
+Please report any bugs you find via http://businessdirectoryplugin.com/forums  
+
+= Premium Module Links: =
+These are optional modules that you can use to enhance Business Directory Plugin's functionality and
+support future development:
+
+[PayPal Gateway Module](http://businessdirectoryplugin.com/premium-modules/paypal-module?ref=wp)
+
+[2Checkout Gateway Module](http://businessdirectoryplugin.com/premium-modules/2checkout-module?ref=wp)
+
+For more information and support please visit [http://businessdirectoryplugin.com](http://businessdirectoryplugin.com?ref=wp)
+For plugin support please visit [http://businessdirectoryplugin.com/forums](http://businessdirectoryplugin.com/forums)
+
+If you love the plugin, [please consider purchasing a Premium Module](http://businessdirectoryplugin.com/premium-modules/?ref=wp)!
 
 
 == Credits ==
 
-Copyright 2009 A. Lewis 
-
+Copyright 2009-12, D. Rodenbaugh 
+Original Author: A. Lewis
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -74,10 +91,30 @@ If you are having problems please visit http://www.businessdirectoryplugin.com f
 
 == Screenshots ==
 
+[Visit the main site for screenshots](http://businessdirectoryplugin.com/)
+
 
 == Changelog ==
 
-Version 1.0 Business Directory Plugin carries over from the last version of WP Business Directory Manager (1.9.5) Fixes include:
+Version 2.0 
+
+    1. Reset versioning to sensible convention
+    
+    2. Fixed search CSS and searching functionality
+    
+    3. Changed category management to simplify
+    
+    4. Added payment status, featured status into listing screen directly
+    
+    5. Google Checkout bug fix
+    
+    6. Fixed various scripting errors (22 bug fixes total)
+    
+    7. Button alignment fixes and admin UI cleanup
+    
+
+    
+Version 1.0 (1.9.6) Business Directory Plugin carries over from the last version of WP Business Directory Manager (1.9.5) Fixes include:
 
 	1. Sticky listings bug fix
 	
@@ -88,9 +125,6 @@ Version 1.0 Business Directory Plugin carries over from the last version of WP B
 	4. New classes added for sticky listing styling
 	
 	5. Addition of basic search feature
-	
-	
-	
 	
 
 Previous changelog from WP Business Directory Manager
