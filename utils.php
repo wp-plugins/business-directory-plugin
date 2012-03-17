@@ -9,6 +9,7 @@ class WPBDP_Debugging {
 	private static $messages = array();
 
 	public static function debug_on() {
+		error_reporting(E_ALL);
 		self::$debug = true;
 
 		add_action('admin_print_styles', array('WPBDP_Debugging', '_print_styles'));
@@ -192,4 +193,3 @@ function wpbdp_render_page($template, $vars=array(), $echo_output=false) {
 
 	return $html;
 }
-
