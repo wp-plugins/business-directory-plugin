@@ -1,22 +1,22 @@
 <?php
 require_once(WPBDP_PATH . 'admin/admin-pages.php');
 require_once(WPBDP_PATH . 'admin/fees.php');
-require_once(WPBDP_PATH . 'admin/form-manager.php');
+require_once(WPBDP_PATH . 'admin/form-fields.php');
 require_once(WPBDP_PATH . 'admin/uninstall.php');
 
 if (!class_exists('WPBDP_Admin')) {
 
 class WPBDP_Admin {
 
-    private $messages = array();
+    public $messages = array();
 
     function __construct() {
-
         add_action('admin_init', array($this, 'handle_actions'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'add_listing_metabox'));
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_notices', array($this, 'admin_notices'));
+        add_action('admin_enqueue_scripts', array($this, 'admin_javascript'));
         add_action('admin_enqueue_scripts', array($this, 'admin_styles'));
 
         add_filter(sprintf('manage_edit-%s_columns', WPBDP_Plugin::POST_TYPE),
@@ -24,6 +24,10 @@ class WPBDP_Admin {
         add_action(sprintf('manage_posts_custom_column'), array($this, 'custom_columns'));
         add_filter('views_edit-' . WPBDP_Plugin::POST_TYPE, array($this, 'add_custom_views'));
         add_filter('request', array($this, 'apply_query_filters'));
+    }
+
+    function admin_javascript() {
+        wp_enqueue_script('wpbdp-admin-js', plugins_url('/resources/admin.js', __FILE__), array('jquery'));
     }
 
     function admin_styles() {
@@ -42,7 +46,7 @@ class WPBDP_Admin {
                          _x('Add New Listing', 'admin menu', 'WPBDM'),
                          'activate_plugins',
                          'wpbdman_c3a',
-                         '_wpbdp_admin_add_listing');
+                         'wpbdp_admin_add_listing');
         add_submenu_page('wpbusdirman.php',
                          _x('Manage Options', 'admin menu', 'WPBDM'),
                          _x('Manage Options', 'admin menu', 'WPBDM'),
@@ -56,11 +60,11 @@ class WPBDP_Admin {
                          'wpbdman_c2',
                          'wpbusdirman_opsconfig_fees');
         add_submenu_page('wpbusdirman.php',
-                         _x('Manage Fields', 'admin menu', 'WPBDM'),
+                         _x('Manage Form Fields', 'admin menu', 'WPBDM'),
                          _x('Manage Form Fields', 'admin menu', 'WPBDM'),
                          'activate_plugins',
-                         'wpbdman_c3',
-                         'wpbusdirman_buildform');
+                         'wpbdp_admin_formfields',
+                         array('WPBDP_FormFieldsAdmin', 'admin_menu_cb'));
         add_submenu_page('wpbusdirman.php',
                          _x('Manage Featured', 'admin menu', 'WPBDM'),
                          _x('Manage Featured', 'admin menu', 'WPBDM'),
@@ -83,7 +87,6 @@ class WPBDP_Admin {
         // just a little hack
         global $submenu;
         $submenu['wpbusdirman.php'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
-        $submenu['wpbusdirman.php'][1][2] = admin_url('admin.php?page=wpbdman_c3&action=addnewlisting');
         $submenu['wpbusdirman.php'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
         $submenu['wpbusdirman.php'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
     }
@@ -196,8 +199,14 @@ class WPBDP_Admin {
 
     function admin_notices() {
         foreach ($this->messages as $msg) {
-            echo sprintf('<div class="updated">%s</div>', $msg);
+            if (is_array($msg)) {
+                echo sprintf('<div class="%s">%s</div>', $msg[1], $msg[0]);
+            } else {
+                echo sprintf('<div class="updated">%s</div>', $msg);
+            }
         }
+
+        $this->messages = array();
     }
 
     function handle_actions() {
@@ -230,7 +239,7 @@ class WPBDP_Admin {
                 break;
 
             case 'cancelfeatured':
-                delete_post_meta($post_id, "_wpbdp_sticky", "pending");
+                delete_post_meta($post_id, "_wpbdp_sticky");
                 
                 $this->messages[] = __("The listing has been downgraded.","WPBDM");
                 break;
@@ -409,7 +418,6 @@ class WPBDP_Admin {
                           array('wpbdp_settings' => $wpbdp->settings),
                           true);
     }
-
 
 }
 

@@ -32,23 +32,20 @@ function wpbusdirman_single_template($single)
 	global $wp_query, $post, $wpbdmposttype;
 	$mywpbdmposttype=$post->post_type;
 
+	if ($mywpbdmposttype == $wpbdmposttype) {
+		if(file_exists(get_template_directory() . '/single/wpbusdirman-single.php'))
+		return get_template_directory() . '/single/wpbusdirman-single.php';
+		if(file_exists(get_stylesheet_directory() . '/single/wpbusdirman-single.php'))
+		return get_stylesheet_directory() . '/single/wpbusdirman-single.php';
+		if(file_exists(WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-single.php'))
+		return WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-single.php';
+	}
 
-		if($mywpbdmposttype == $wpbdmposttype )
-		{
-			if(file_exists(get_template_directory() . '/single/wpbusdirman-single.php'))
-			return get_template_directory() . '/single/wpbusdirman-single.php';
-			if(file_exists(get_stylesheet_directory() . '/single/wpbusdirman-single.php'))
-			return get_stylesheet_directory() . '/single/wpbusdirman-single.php';
-			if(file_exists(WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-single.php'))
-			return WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-single.php';
-		}
-
-return $single;
+	return $single;
 
 }
 
-function wpbusdirman_search_template($search)
-{
+function wpbusdirman_search_template($search) {
 	global $wp_query, $post, $wpbdmposttype;
 
 		if(isset($_REQUEST['post_type']) && ( $_REQUEST['post_type'] == $wpbdmposttype ))
@@ -61,8 +58,7 @@ function wpbusdirman_search_template($search)
 			return WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-search.php';
 		}
 
-return $search;
-
+	return $search;
 }
 
 function wpbusdirman_category_template($category)
