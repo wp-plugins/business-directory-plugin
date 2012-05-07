@@ -1,8 +1,6 @@
-<?php
-	get_header();
-?>
+<?php get_header(); ?>
 
-<div id="primary">
+<div>
 <div id="content">
 
 <div id="wpbdmentry"><div class="fixpadding">
@@ -53,8 +51,6 @@ include(WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-sticky-loop.php');
 		);
 	}
 
-	// WPBDP_Plugin::debug_e($args);
-
 		query_posts($args);
 
 	if ( have_posts() )
@@ -89,7 +85,10 @@ include(WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-sticky-loop.php');
 	}
 	else
 	{
-		_e("No listings found in category","WPBDM");
+		_e("No listings found in category.", "WPBDM");
+		echo '<br />';
+		echo sprintf('<a href="%s">%s</a>.', wpbdp_get_page_link('main'),
+					 _x('Return to directory', 'WPBDM'));
 	}
 ?>
 	</div></div><!--close div wpbdmentry--><!--close div fixpadding-->
@@ -97,6 +96,4 @@ include(WPBUSDIRMAN_TEMPLATES_PATH . '/wpbusdirman-sticky-loop.php');
 	</div>
 	</div>
 
-<?php
-
-	get_footer();
+<?php get_footer(); ?>

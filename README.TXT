@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget
 Requires at least: 3.0
 Tested up to: 3.3.1
-Last Updated: 2012-Apr-20
-Stable tag: tags/2.0.2
+Last Updated: 2012-May-7
+Stable tag: tags/2.0.3
 
 Business Directory Plugin for WordPress (Formerly WP Business Directory Manager) is a flexible plugin for WordPress business directory creation but useful for a variety of other purposes.  Create any WordPress directory with it. 
 
@@ -95,6 +95,37 @@ If you are having problems please visit http://www.businessdirectoryplugin.com f
 
 
 == Changelog ==
+
+Version 2.0.3
+
+   1. Autocreate required fields
+   
+   2. Directory admin menu set to be visible only to administrator role
+   
+   3. Content field will not show as link now
+   
+   4. Reply emails go to the business listing instead of site owner
+   
+   5. Listings without photos now no longer have placeholder
+   
+   6. Submit Listing no longer displays raw HTML code to user
+   
+   7. Plugin now uses UTF-8 functions to properly handle non-ASCII characters
+   
+   8. BD now integrates in a more friendly way with themes, avoids overriding when possible
+   
+   9. preg_match() warning fixed
+   
+   10. Extra line breaks removed from listing display
+   
+   11. Conflict with Yoast All in One SEO fixed
+   
+   12. Changing the slug now checks for reserved/already used slugs to avoid conflict
+   
+   13. Form fields now custom ordered
+   
+   14. Module detection code fixed, now displays which modules are installed for PayPal/2Checkout
+
 
 Version 2.0.2
 

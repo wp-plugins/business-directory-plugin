@@ -8,17 +8,16 @@ class WPBDP_Settings {
 		$this->groups = array();
 		$this->settings = array();
 
-		add_action('init', array($this, '_register_settings'));
+		$this->register_settings();
 	}
 
-
-	public function _register_settings() {
+	private function register_settings() {
 		/* General settings */
 		$g = $this->add_group('general', _x('General', 'admin settings', 'WPBDM'));
 		$s = $this->add_section($g, 'permalink', _x('Permalink Settings', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, 'permalinks-directory-slug', _x('Directory Listings Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE);
-		$this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_CATEGORY);
-		$this->add_setting($s, 'permalinks-tags-slug', _x('Tags Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_TAGS);
+		$this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_CATEGORY, _x('The slug can\'t be in use by another term. Avoid "category", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
+		$this->add_setting($s, 'permalinks-tags-slug', _x('Tags Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_TAGS, _x('The slug can\'t be in use by another term. Avoid "tag", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
 
 		$s = $this->add_section($g, 'recaptcha', _x('ReCaptcha Settings', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, 'recaptcha-on', _x('Turn on reCAPTCHA?', 'admin settings', 'WPBDM'), 'boolean', true);
@@ -141,11 +140,23 @@ class WPBDP_Settings {
 		$this->add_setting($s, 'show-thumbnail', _x('Show Thumbnail on main listings page?', 'admin settings', 'WPBDM'), 'boolean', true);
 	}
 
-	public function add_group($slug, $name) {
+	public function _validate_term_permalink($setting, $newvalue, $oldvalue=null) {
+		$bd_taxonomy = $setting->name == 'permalinks-category-slug' ? wpbdp()->get_post_type_category() : wpbdp()->get_post_type_tags();
+		foreach (get_taxonomies(null, 'objects') as $taxonomy) {
+			if ($taxonomy->rewrite && $taxonomy->rewrite['slug'] == $newvalue && $taxonomy->name != $bd_taxonomy) {
+				return $oldvalue;
+			}
+		}
+
+		return $newvalue;
+	}
+
+	public function add_group($slug, $name, $help_text='') {
 		$group = new StdClass();
 		$group->wpslug = self::PREFIX . $slug;
 		$group->slug = $slug;
 		$group->name = $name;
+		$group->help_text = $help_text;
 		$group->sections = array();
 
 		$this->groups[$slug] = $group;
@@ -153,10 +164,11 @@ class WPBDP_Settings {
 		return $slug;
 	}
 
-	public function add_section($group_slug, $slug, $name) {
+	public function add_section($group_slug, $slug, $name, $help_text='') {
 		$section = new StdClass();
 		$section->name = $name;
 		$section->slug = $slug;
+		$section->help_text = $help_text;
 		$section->settings = array();
 
 		$this->groups[$group_slug]->sections[$slug] = $section;
@@ -164,8 +176,9 @@ class WPBDP_Settings {
 		return "$group_slug:$slug";
 	}
 
-	public function add_setting($section_key, $name, $label, $type='text', $default=null, $help_text='', $args=array()) {
+	public function add_setting($section_key, $name, $label, $type='text', $default=null, $help_text='', $args=array(), $validator=null) {
 		list($group, $section) = explode(':', $section_key);
+		$args = !$args ? array() : $args;
 
 		if (!$group || !$section)
 			return false;
@@ -175,7 +188,7 @@ class WPBDP_Settings {
 			if (is_null($_default)) {
 				switch ($type) {
 					case 'text':
-					case 'choices':
+					case 'choice':
 						$_default = '';
 						break;
 					case 'boolean':
@@ -194,6 +207,7 @@ class WPBDP_Settings {
 			$setting->default = $_default;
 			$setting->type = $type;
 			$setting->args = $args;
+			$setting->validator = $validator;
 
 			$this->groups[$group]->sections[$section]->settings[$name] = $setting;
 		}
@@ -209,7 +223,11 @@ class WPBDP_Settings {
 		$value =  get_option(self::PREFIX . $name, null);
 
 		if (is_null($value)) {
-			$default_value = isset($this->settings[$name]) ? $this->settings[$name]->default : null;			
+			$default_value = isset($this->settings[$name]) ? $this->settings[$name]->default : null;
+
+			if (is_null($default_value))
+				return $ifempty;
+
 			return $default_value;
 		}
 
@@ -274,12 +292,12 @@ class WPBDP_Settings {
 		$setting = $args['setting'];
 		$value = $this->get($setting->name);
 
-		if (isset($args['use_textarea']) || strlen($value) > 50) {
+		if (isset($args['use_textarea']) || strlen($value) > 100) {
 			$html  = '<textarea id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" cols="50" rows="2">';
 			$html .= esc_attr($value);
 			$html .= '</textarea>';
 		} else {
-			$html = '<input type="text" id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" value="' . $value . '" />';
+			$html = '<input type="text" id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" value="' . $value . '" size="' . (strlen($value) > 0 ? strlen($value) : 20). '" />';
 		}
 
 		$html .= '<span class="description">' . $setting->help_text . '</span>';
@@ -326,7 +344,12 @@ class WPBDP_Settings {
 	public function register_in_admin() {
 		foreach ($this->groups as $group) {
 			foreach ($group->sections as $section) {
-				add_settings_section($section->slug, $section->name, create_function('', ';'), $group->wpslug);
+				$callback = create_function('', ';');
+
+				if ($section->help_text)
+					$callback = create_function('', 'echo "<p class=\"description\">' . $section->help_text . '</p>";');
+
+				add_settings_section($section->slug, $section->name, $callback, $group->wpslug);
 
 				foreach ($section->settings as $setting) {
 					register_setting($group->wpslug, self::PREFIX . $setting->name);
@@ -336,9 +359,20 @@ class WPBDP_Settings {
 									   $section->slug,
 									   array_merge($setting->args, array('label_for' => $setting->name, 'setting' => $setting))
 									   );
+
+					if ($setting->validator) {
+						add_filter('pre_update_option_' . self::PREFIX . $setting->name, create_function('$n,$o', 'return WPBDP_Settings::_validate_setting("' . $setting->name . '", $n,$o);'), 2);
+					}
 				}
 			}
 		}
+	}
+
+	public static function _validate_setting($name, $newvalue, $oldvalue) {
+		$api = wpbdp_settings_api();
+		$setting = $api->settings[$name];
+
+		return call_user_func($setting->validator, $setting, $newvalue, $api->get($setting->name));
 	}
 
 	/* upgrade from old-style settings to new options */

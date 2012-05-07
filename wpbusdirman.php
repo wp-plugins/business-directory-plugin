@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.0.2
+Version: 2.0.3
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -81,30 +81,12 @@ $wpbdmposttype="wpbdm-directory";
 $wpbdmposttypecategory="wpbdm-category";
 $wpbdmposttypetags="wpbdm-tags";
 
-	if( file_exists("$wpbusdirman_plugin_path/gateways/paypal.php") )
-	{
-		require("$wpbusdirman_plugin_path/gateways/paypal.php");
-		$wpbusdirman_haspaypalmodule=1;
-	}
-	if( file_exists("$wpbusdirman_plugin_path/gateways/twocheckout.php") )
-	{
-		require("$wpbusdirman_plugin_path/gateways/twocheckout.php");
-		$wpbusdirman_hastwocheckoutmodule=1;
-	}
 	if( file_exists("$wpbusdirman_plugin_path/gateways/googlecheckout.php") )
 	{
 		require("$wpbusdirman_plugin_path/gateways/googlecheckout.php");
 		$wpbusdirman_hasgooglecheckoutmodule=1;
 	}
 
-	if($wpbusdirman_haspaypalmodule	== 1)
-	{
-		add_shortcode('WPBUSDIRMANPAYPAL', 'wpbusdirman_do_paypal');
-	}
-	if($wpbusdirman_hastwocheckoutmodule == 1)
-	{
-		add_shortcode('WPBUSDIRMANTWOCHECKOUT', 'wpbusdirman_do_twocheckout');
-	}
 	if($wpbusdirman_hasgooglecheckoutmodule == 1)
 	{
 		add_shortcode('WPBUSDIRMANGOOGLECHECKOUT', 'wpbusdirman_do_googlecheckout');
@@ -126,6 +108,7 @@ $wpbdmposttypetags="wpbdm-tags";
 
 define('WPBDP_PATH', plugin_dir_path(__FILE__));
 define('WPBDP_URL', plugins_url('/', __FILE__));
+define('WPBDP_TEMPLATES_PATH', WPBDP_PATH . 'templates');
 
 require_once(WPBDP_PATH . 'api.php');
 
@@ -176,8 +159,6 @@ $wpbusdirman_field_vals_pfl=wpbusdirman_retrieveoptions($whichoptions='wpbusdirm
 
 	add_filter('search_template', 'wpbusdirman_search_template');
 
-
-	add_filter('comments_template', 'wpbusdirman_template_comment');
 	//add_filter('the_title', 'wpbusdirman_template_the_title');
 	//add_action('loop_start', 'wpbusdirman_remove_post_dates_author_etc');
 
@@ -198,7 +179,6 @@ $wpbusdirman_field_vals_pfl=wpbusdirman_retrieveoptions($whichoptions='wpbusdirm
 	add_filter('wpbdm_show-image-upload-form', 'wpbusdirman_image_upload_form', 10, 8);
 	//form post handler
 	add_filter('wpbdm_process-form-post', 'wpbusdirman_do_post', 10, 0);
-
 
 function wpbdm_get_post_data($data,$wpbdmlistingid)
 {
@@ -283,7 +263,7 @@ function wpbusdirman_displaypostform($makeactive = 1, $wpbusdirmanerrors=null, $
 			if(!isset($wpbusdirman_loginurl) || empty($wpbusdirman_loginurl)) {
 				$wpbusdirman_loginurl=get_option('siteurl').'/wp-login.php';
 			}
-			$html .= "<p>" . __("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 mintues.","WPBDM") . "</p>";
+			$html .= "<p>" . __("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 minutes.","WPBDM") . "</p>";
 			$html .= "<form method=\"post\" action=\"$wpbusdirman_loginurl\"><input type=\"submit\" class=\"insubmitbutton\" value=\"" . __("Login Now","WPBDM") . "\"></form>";
 		} else {
 			$html .= "<div class=\"clear\"></div><form method=\"post\" action=\"\" enctype=\"application/x-www-form-urlencoded\">";
@@ -356,6 +336,8 @@ function wpbusdirman_displaypostform($makeactive = 1, $wpbusdirmanerrors=null, $
 					$html .= $formfields_api->render($field, $field_value);
 				}
 			}
+
+			$html .= apply_filters('wpbdp_listing_form', '', $neworedit == 'new' ? false : true);
 
 			$html .= "<p><input type=\"submit\" class=\"insubmitbutton\" value=\"" . __("Submit","WPBDM") . "\" /></p></form>";
 			$html .= "</div>";
@@ -670,10 +652,6 @@ function wpbusdirmanui_directory_screen() {
 						"Content-Type: text/plain; charset=\"" . get_option('blog_charset') . "\"\n";
 				$subject = "[" . get_option( 'blogname' ) . "] " . wp_kses( get_the_title($wpbusdirmanlistingpostid), array() );
 				$wpbdmsendtoemail=wpbusdirman_get_the_business_email($wpbusdirmanlistingpostid);
-				if(!isset($wpbdmsendtoemail) || empty($wpbdmsendtoemail))
-				{
-					$wpbdmsendtoemail=$post_author->user_email;
-				}
 				$time = date_i18n( __('l F j, Y \a\t g:i a'), current_time( 'timestamp' ) );
 				$message = "Name: $commentauthorname
 				Email: $commentauthoremail
@@ -935,52 +913,23 @@ function wpbusdirmanui_directory_screen() {
 	return $html;
 }
 
-function wpbusdirman_get_the_business_email($wpbusdirmanlistingpostid)
-{
+function wpbusdirman_get_the_business_email($post_id) {
+	$api = wpbdp_formfields_api();
 
-	global $wpbusdirmanconfigoptionsprefix;
+	// try first with the listing fields
+	foreach ($api->getFieldsByAssociation('meta') as $field) {
+		$value = wpbdp_get_listing_field_value($post_id, $field);
 
-	$wpbdm_the_email='';
-	wp_reset_query();
-	$mypost=get_post($wpbusdirmanlistingpostid);
-	$thepostid=$mypost->ID;
-	$wpbdm_the_emailsarr=array();
-
-	$wpbusdirman_field_vals=wpbusdirman_retrieveoptions($whichoptions='wpbusdirman_postform_field_label_');
-
-	if($wpbusdirman_field_vals)
-	{
-		foreach($wpbusdirman_field_vals as $wpbusdirman_field_val):
-
-
-			$wpbusdirman_field_label=get_option($wpbusdirmanconfigoptionsprefix.'_postform_field_label_'.$wpbusdirman_field_val);
-			$wpbusdirman_field_association=get_option($wpbusdirmanconfigoptionsprefix.'_postform_field_association_'.$wpbusdirman_field_val);
-
-
-			if($wpbusdirman_field_association == 'meta')
-			{
-				$wpbdm_meta_fields[]=$wpbusdirman_field_label;
-			}
-
-		endforeach;
-
-
-		foreach($wpbdm_meta_fields as $wpbdm_meta_field)
-		{
-
-			$wpbdm_field_value=get_post_meta($thepostid, $wpbdm_meta_field, true);
-
-				if(isset($wpbdm_field_value) && !empty($wpbdm_field_value) && (wpbusdirman_isValidEmailAddress($wpbdm_field_value)))
-				{
-					$wpbdm_the_emailsarr[]=$wpbdm_field_value;
-				}
-
-		}
-
+		if (wpbusdirman_isValidEmailAddress($value))
+			return $value;
 	}
 
-	$wpbdm_the_email=$wpbdm_the_emailsarr[0];
-	return $wpbdm_the_email;
+	// then with the author email
+	$post = get_post($post_id);
+	if ($email = get_the_author_meta('user_email', $post->author))
+		return $email;
+
+	return '';
 }
 
 function wpbusdirman_the_image($wpbusdirman_pID,$size = 'medium' , $class = '')
@@ -1881,6 +1830,9 @@ function wpbusdirman_validate_data() {
 }
 
 function wpbusdirman_isValidEmailAddress($email) {
+	if (is_array($email))
+		return false;
+
 	return (bool) preg_match('/^(?!(?>\x22?(?>\x22\x40|\x5C?[\x00-\x7F])\x22?){255,})(?!(?>\x22?\x5C?[\x00-\x7F]\x22?){65,}@)(?>[\x21\x23-\x27\x2A\x2B\x2D\x2F-\x39\x3D\x3F\x5E-\x7E]+|(?>\x22(?>[\x01-\x08\x0B\x0C\x0E-\x1F\x21\x23-\x5B\x5D-\x7F]|\x5C[\x00-\x7F])*\x22))(?>\.(?>[\x21\x23-\x27\x2A\x2B\x2D\x2F-\x39\x3D\x3F\x5E-\x7E]+|(?>\x22(?>[\x01-\x08\x0B\x0C\x0E-\x1F\x21\x23-\x5B\x5D-\x7F]|\x5C[\x00-\x7F])*\x22)))*@(?>(?>(?!.*[^.]{64,})(?>(?>xn--)?[a-z0-9]+(?>-[a-z0-9]+)*\.){0,126}(?>xn--)?[a-z0-9]+(?>-[a-z0-9]+)*)|(?:\[(?>(?>IPv6:(?>(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){7})|(?>(?!(?:.*[a-f0-9][:\]]){8,})(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){0,6})?::(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){0,6})?)))|(?>(?>IPv6:(?>(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){5}:)|(?>(?!(?:.*[a-f0-9]:){6,})(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){0,4})?::(?>[a-f0-9]{1,4}(?>:[a-f0-9]{1,4}){0,4}:)?)))?(?>25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?>\.(?>25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}))\]))$/isD', $email);
 }
 
@@ -2315,7 +2267,7 @@ function wpbusdirman_managelistings()
 		{
 			$wpbusdirmanloginurl=$siteurl.'/wp-login.php';
 		}
-		$html .= "<p>" . __("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 mintues.","WPBDM") . "</p>";
+		$html .= "<p>" . __("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 minutes.","WPBDM") . "</p>";
 		$html .= "<form method=\"post\" action=\"$wpbusdirmanloginurl\"><input type=\"submit\" class=\"insubmitbutton\" value=\"" . __("Login Now","WPBDM") . "\" /></form>";
 	}
 	else
@@ -2828,45 +2780,32 @@ function wpbusdirman_viewlistings()
 
 
 //Display the listing thumbnail
-function wpbusdirman_display_the_thumbnail()
-{
-	global $wpbdmimagesurl,$post,$wpbusdirmanconfigoptionsprefix,$wpbusdirman_imagesurl;
-	$wpbusdirman_config_options=get_wpbusdirman_config_options();
-	$html = '';
+function wpbusdirman_display_the_thumbnail() {
+	global $post, $wpbdmimagesurl, $wpbusdirman_imagesurl;
 
-	if($wpbusdirman_config_options[$wpbusdirmanconfigoptionsprefix.'_settings_config_11'] == "yes")
-	{
-		$tpostimg2=get_post_meta($post->ID, "_wpbdp_image", true);
-		if(isset($tpostimg2)
-			&& !empty($tpostimg2))
-		{
-			$wpbusdirman_theimg2=$tpostimg2;
-		}
-		else
-		{
-			$wpbusdirman_theimg2='';
-		}
-		$wpbdmusedef=$wpbusdirman_config_options[$wpbusdirmanconfigoptionsprefix.'_settings_config_39'];
-		$wpbdmimgwidth=$wpbusdirman_config_options[$wpbusdirmanconfigoptionsprefix.'_settings_config_17'];
-		if(!isset($wpbdmimgwidth)
-			|| empty($wpbdmimgwidth))
-		{
-			$wpbdmimgwidth="120";
-		}
-		if(isset($wpbusdirman_theimg2)
-			&& !empty($wpbusdirman_theimg2))
-		{
-			$html .= '<a href="' . get_permalink() . '"><img class="wpbdmthumbs" src="' . $wpbdmimagesurl . '/thumbnails/' . $wpbusdirman_theimg2 . '" width="' . $wpbdmimgwidth . '" alt="' . the_title(null, null, false) . '" title="' . the_title(null, null, false) . '" border="0"></a>';
-		}
-		else
-		{
-			if(!isset($wpbdmusedef)
-				|| empty($wpbdmusedef)
-				|| ($wpbdmusedef == "yes"))
-			{
-				$html .= '<a href="' . get_permalink() . '"><img class="wpbdmthumbs" src="' . $wpbusdirman_imagesurl . '/default.png" width="' . $wpbdmimgwidth . '" alt="' .  the_title(null, null, false) . '" title="' . the_title(null, null, false) . '" border="0"></a>';
-			}
-		}
+	if (!wpbdp_get_option('allow-images') || !wpbdp_get_option('show-thumbnail'))
+		return '';
+
+	$html = '';
+	$thumbnail = null;
+	
+	if ($thumbnail = get_post_meta($post->ID, '_wpbdp_image', true))
+		$thumbnail = $wpbdmimagesurl . '/thumbnails/' . $thumbnail;
+
+	if (!$thumbnail && wpbdp_get_option('use-default-picture'))
+		$thumbnail = $wpbusdirman_imagesurl . '/default.png';
+
+
+	if ($thumbnail) {
+		$html .= '<div class="listingthumbnail">';
+		$html .= sprintf('<a href="%s"><img class="wpbdmthumbs" src="%s" width="%s" alt="%s" title="%s" border="0" /></a>',
+						 get_permalink(),
+						 $thumbnail,
+						 wpbdp_get_option('thumbnail-width', '120'),
+						 the_title(null, null, false),
+						 the_title(null, null, false)
+						);
+		$html .= '</div>';
 	}
 
 	return $html;
@@ -3052,7 +2991,7 @@ function wpbusdirman_post_list_categories()
 		'orderby' => $orderby,
 		'order' => $order,
 		'show_count' => $show_count,
-		'pad_counts' => $wpbdm_show_parent_categories_only ? true : false,
+		'pad_counts' => true,
 		'hide_empty' => $hide_empty,
 		'hierarchical' => 1,
 		'depth' => $wpbdm_show_parent_categories_only ? 1 : 0
@@ -3244,65 +3183,15 @@ function wpbusdirman_indexpage_query()
 
 // Display the listing fields in excerpt view
 function wpbusdirman_display_the_listing_fields() {
-	global $post,$wpbdmposttypecategory,$wpbdmposttypetags,$wpbusdirmanconfigoptionsprefix;
-	$wpbusdirman_field_vals=wpbusdirman_retrieveoptions($whichoptions='wpbusdirman_postform_field_label_');
+	global $post;
+
 	$html = '';
 
-	$formfields_api = wpbdp_formfields_api();
-
-	foreach($formfields_api->getFields() as $field) {
-		if ($field->display_options['hide_field'] || !$field->display_options['show_in_excerpt'])
+	foreach (wpbdp_get_formfields() as $field) {
+		if (!$field->display_options['show_in_excerpt'])
 			continue;
 
-		switch ($field->association) {
-			case 'title':
-				$html .= sprintf( '<p><label>%s</label>: <a href="%s">%s</a></p>',
-								  esc_attr($field->label),
-								  get_permalink(),
-								  the_title(null, null, false) );
-				break;
-			case 'category':
-				$html .= sprintf( '<p><label>%s</label>: %s</p>',
-								  esc_attr($field->label),
-								  get_the_term_list($post->ID, wpbdp()->get_post_type_category(), '', ', ', '') );
-				break;
-			case 'excerpt':
-				if (has_excerpt($post->ID))
-					$html .= sprintf( '<p><label>%s</label>: %s</p>',
-									  esc_attr($field->label),
-									  get_the_excerpt() );
-				break;
-			case 'content':
-				$content = apply_filters('the_content', get_the_content());
-				$content = str_replace(']]>', ']]&gt;', $content);
-
-				$html .= sprintf( '<p><label>%s</label>: <a href="%s">%s</a></p>',
-								  esc_attr($field->label),
-								  get_permalink(),
-								  $content );
-				break;
-			case 'tags':
-				if ($tags = get_the_term_list($post->ID, wpbdp()->get_post_type_tags(), '', ', ', ''))
-					$html .= sprintf('<p><label>%s</label>: %s</p>',
-									 esc_attr($field->label),
-									 $tags);
-				break;
-			case 'meta':
-			default:
-				if ($value = get_post_meta($post->ID, $field->label, true)) {
-					if ($field->validator == 'URLValidator')
-						$value = sprintf('<a href="%s" rel="no follow">%s</a>', esc_url($value), esc_url($value));
-					
-					if (in_array($field->type, array('multiselect', 'checkbox')))
-						$value = str_replace("\t", ', ', $value);
-
-					$html .= sprintf( '<p><label>%s</label>: %s</p>',
-									  esc_attr($field->label),
-									  $value);
-				}
-
-				break;
-		}
+		$html .= wpbdp_format_field_output($field, null, $post);
 	}
 
 	return $html;
@@ -3336,25 +3225,29 @@ function wpbusdirman_display_excerpt($count=0)
 	echo wpbusdirman_post_excerpt($count);
 }
 
-function wpbusdirman_post_excerpt($count)
-{ 	$wpbusdirman_gpid=wpbusdirman_gpid();
-	$wpbusdirman_permalink=get_permalink($wpbusdirman_gpid);
+function wpbusdirman_post_excerpt($count) {
+	$is_sticky = get_post_meta(get_the_ID(), '_wpbdp_sticky', true) == 'approved' ? true : false;
 
 	$html = '';
+	$html .= sprintf('<div id="wpbdmlistings" class="wpbdp-listing excerpt %s %s %s">',
+					$is_sticky ? 'sticky' : '',
+					$is_sticky ? (($count & 1) ? 'wpbdmoddsticky' : 'wpbdmevensticky') : '',
+					($count & 1) ? 'wpbdmodd' : 'wpbdmeven');
 
-	$html .= '<div id="wpbdmlistings"';
-	$isasticky=get_post_meta(get_the_ID(),'_wpbdp_sticky');
-	if(isset($isasticky) && !empty($isasticky)){
-	$isasticky=$isasticky[0];}
-	if(isset($isasticky) && ($isasticky == 'approved')){
-	if($count&1){$html .= ' class="wpbdmoddsticky"';}else {$html .= ' class="wpbdmevensticky"';}}else {if($count&1){$html .= ' class="wpbdmodd"';}else {$html .= ' class="wpbdmeven"';}}
-	$html .='><div class="listingthumbnail">' . wpbusdirman_display_the_thumbnail() . '</div><div class="listingdetails">';
+	$html .= wpbusdirman_display_the_thumbnail();
+
+	$html .= '<div class="listingdetails">';
+	$html .= apply_filters('wpbdp_listing_excerpt_view_before', '', $post->ID);
 	$html .= wpbusdirman_display_the_listing_fields();
+	$html .= apply_filters('wpbdp_listing_excerpt_view_after', '', $post->ID);
 	$html .= wpbusdirman_view_edit_delete_listing_button();
-	$html .= '</div><div style="clear:both;"></div></div>';
+	$html .= '</div>';
+	$html .= '<div style="clear: both;"></div>';
+	$html .= '</div>';
 
 	return $html;
 }
+
 
 function wpbusdirman_display_ac()
 {
@@ -3485,13 +3378,19 @@ function wpbusdirman_post_single_listing_details()
 	 	$html .= '<span class="featuredlisting"><img src="' . $wpbusdirman_imagesurl . '/featuredlisting.png" alt="' . __("Featured Listing","WPBDM") . '" border="0" title="' . the_title(null, null, false) . '"></span>';
 	}
 
+	$html .= apply_filters('wpbdp_listing_view_before', '', $post->ID);
+
 	$html .= '<div class="singledetailsview">';
-	$html .= wpbusdirman_the_listing_title();
-	$html .= wpbusdirman_the_listing_category();
-	$html .= wpbusdirman_the_listing_meta('single');
-	$html .= wpbusdirman_the_listing_excerpt();
-	$html .= wpbusdirman_the_listing_content();
-	$html .= wpbusdirman_the_listing_tags();
+
+	foreach (wpbdp_get_formfields() as $field) {
+		if ($field->association == 'excerpt'):
+			$html .= wpbdp_format_field_output($field, $post->post_excerpt);
+		else:
+			$html .= wpbdp_format_field_output($field, null, $post);
+		endif;
+	}
+
+	$html .= apply_filters('wpbdp_listing_view_after', '', $post->ID);
 	$html .= wpbusdirman_contactform($wpbusdirman_permalink,$post->ID,$commentauthorname='',$commentauthoremail='',$commentauthorwebsite='',$commentauthormessage='',$wpbusdirman_contact_form_errors='');
 	$html .= '</div>';
 
@@ -3499,90 +3398,35 @@ function wpbusdirman_post_single_listing_details()
 }
 
 function wpbusdirman_the_listing_title() {
-	$html = '';
-
-	if ($field = wpbdp_formfields_api()->getFieldsByAssociation('title', true)) {
-		$html .= '<p><label>' . esc_attr($field->label) . '</label>: <a href="' . get_permalink() . '">' . the_title(null, null, false) . '</a></p>';
-	}
-
-	return $html;
-}
-
-function wpbusdirman_the_listing_tags() {
-	global $post;
-
-	$html = '';
-
-	if ($field = wpbdp_formfields_api()->getFieldsByAssociation('tags', true)) {
-		if ($terms = get_the_term_list( $post->ID, wpbdp()->get_post_type_tags(), '', ', ', '' )) {
-			$html .= '<p><label>' . esc_attr($field->label) . '</label>: ' . $terms . '</p>';
-		}
-	}
-
-	return $html;
+	return wpbdp_format_field_output('title', null, get_the_ID());
 }
 
 function wpbusdirman_the_listing_excerpt() {
-	global $post;
-
-	$html = '';
-
-	if ($field = wpbdp_formfields_api()->getFieldsByAssociation('excerpt', true)) {
-		if (has_excerpt($post->ID))
-			$html .= '<p><label>' . esc_attr($field->label) . '</label>: ' . get_the_excerpt() . '</p>';
-	}
-
-	return $html;
+	if (has_excerpt(get_the_ID()))
+		return wpbdp_format_field_output('excerpt', null, get_the_ID());
 }
 
 function wpbusdirman_the_listing_content() {
-	$html = '';
-
-	if ($field = wpbdp_formfields_api()->getFieldsByAssociation('content', true)) {
-		$html .= '<p><label>' . esc_attr($field->label) . '</label>: ' . apply_filters('the_content', get_the_content()) . '</p>';		
-	}
-
-	return $html;
+	return wpbdp_format_field_output('content', null, get_the_ID());
 }
 
 function wpbusdirman_the_listing_category() {
-	global $post;
+	return wpbdp_format_field_output('category', null, get_the_ID());
+}
 
-	$html = '';
-
-	if ($field = wpbdp_formfields_api()->getFieldsByAssociation('category', true)) {
-		$html .= '<p><label>' . esc_attr($field->label) . '</label>: ' . get_the_term_list( $post->ID, wpbdp()->get_post_type_category(), '', ', ', '' ) . '</p>';
-	}
-
-	return $html;
+function wpbusdirman_the_listing_tags() {
+	return wpbdp_format_field_output('tags', null, get_the_ID());
 }
 
 function wpbusdirman_the_listing_meta($excerptorsingle) {
-	global $post,$wpbusdirmanconfigoptionsprefix,$wpbusdirman_field_vals_pfl;
-	$wpbusdirman_config_options=get_wpbusdirman_config_options();
-	$overrideemailblocking=$wpbusdirman_config_options[$wpbusdirmanconfigoptionsprefix.'_settings_config_45'];
+	global $post;
 	$html = '';
 
 	foreach (wpbdp_formfields_api()->getFieldsByAssociation('meta') as $field) {
-		if ($field->display_options['hide_field'])
-			continue;		
-
-		if (isset($excerptorsingle) && $excerptorsingle == 'excerpt' && !$field->display_options['show_in_excerpt'])
+		if ($excerptorsingle == 'excerpt' && !$field->display_options['show_in_excerpt'])
 			continue;
 
-		if ($value = get_post_meta(get_the_ID(), $field->label, true)) {
-			if (!wpbdp_get_option('override-email-blocking') && wpbusdirman_isValidEmailAddress($value))
-				continue;
-
-			if (in_array($field->type, array('multiselect', 'checkbox')))
-				$value = str_replace("\t", ', ', $value);
-
-			if ($field->validator == 'URLValidator') {
-				$value = sprintf('<a href="%s" rel="no follow">%s</a>', esc_url($value), esc_url($value));
-			}
-
-			$html .= sprintf('<p><label>%s</label>: %s</p>', esc_attr($field->label), $value);
-		}
+		$html .= wpbdp_format_field_output($field, null, $post);
 	}
 
 	return $html;
@@ -3638,8 +3482,8 @@ require_once(WPBDP_PATH . 'form-fields.php');
 
 class WPBDP_Plugin {
 
-	const VERSION = '2.0.2';
-	const DB_VERSION = '2.1';
+	const VERSION = '2.0.3';
+	const DB_VERSION = '2.2';
 
 	const POST_TYPE = 'wpbdm-directory';
 	const POST_TYPE_CATEGORY = 'wpbdm-category';
@@ -3647,6 +3491,9 @@ class WPBDP_Plugin {
 	
 
 	public function __construct() {
+		register_activation_hook(__FILE__, array($this, 'plugin_activation'));
+		register_deactivation_hook(__FILE__, array($this, 'plugin_deactivation'));
+
 		if (is_admin()) {
 			$this->admin = new WPBDP_Admin();
 		}
@@ -3659,6 +3506,25 @@ class WPBDP_Plugin {
 
 		add_filter('posts_join', array($this, '_join_with_terms'));
 		add_filter('posts_where', array($this, '_include_terms_in_search'));
+
+		add_filter('comments_template', array($this, '_comments_template'));
+	}
+
+	public function plugin_activation() {
+		add_action('init', array($this, 'flush_rules'), 11);
+	}
+
+	public function plugin_deactivation() {	}
+
+	public function flush_rules() {
+		if (function_exists('flush_rewrite_rules'))
+			flush_rewrite_rules(false);
+	}
+
+	public function init() {
+		do_action('wpbdp_modules_init');
+		do_action('wpbdp_register_settings', $this->settings);
+		do_action('wpbdp_register_fields', $this->formfields);
 	}
 
 	public function get_post_type() {
@@ -3688,17 +3554,19 @@ class WPBDP_Plugin {
 		// add_option('wpbusdirman_db_version', '1.0');
 		// // delete_option('wpbusdirman_db_version');
 		// delete_option('wpbdp-db-version');
-		// update_option('wpbdp-db-version', '2.0');
+		// update_option('wpbdp-db-version', '2.1');
 		// exit;
 
 		$installed_version = get_option('wpbdp-db-version', get_option('wpbusdirman_db_version'));
 
 		// create SQL tables
 		if ($installed_version != self::DB_VERSION) {
+			wpbdp_log('Running dbDelta.');
+
 			$sql = "CREATE TABLE {$wpdb->prefix}wpbdp_form_fields (
 				id MEDIUMINT(9) PRIMARY KEY  AUTO_INCREMENT,
-				label VARCHAR(255) NOT NULL,
-				description VARCHAR(255) NULL,
+				label VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
+				description VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL,
 				type VARCHAR(100) NOT NULL,
 				association VARCHAR(100) NOT NULL,
 				validator VARCHAR(255) NULL,
@@ -3706,7 +3574,7 @@ class WPBDP_Plugin {
 				weight INT(5) NOT NULL DEFAULT 0,
 				display_options BLOB NULL,
 				field_data BLOB NULL
-			);";
+			) DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
 
 			require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 			dbDelta($sql);
@@ -3738,6 +3606,13 @@ class WPBDP_Plugin {
 				// new form-fields support
 				wpbdp_log('Updating old-style form fields.');
 				$this->formfields->_update_to_2_1();
+			}
+
+			if (version_compare($installed_version, '2.2') < 0) {
+				wpbdp_log('Updating table collate information.');
+				$wpdb->query("ALTER TABLE {$wpdb->prefix}wpbdp_form_fields CHARACTER SET utf8 COLLATE utf8_general_ci");
+				$wpdb->query("ALTER TABLE {$wpdb->prefix}wpbdp_form_fields CHANGE `label` `label` VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL");
+				$wpdb->query("ALTER TABLE {$wpdb->prefix}wpbdp_form_fields CHANGE `description` `description` VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL");
 			}
 
 			delete_option('wpbusdirman_db_version');
@@ -3861,9 +3736,6 @@ class WPBDP_Plugin {
 
 		register_taxonomy(self::POST_TYPE_CATEGORY, self::POST_TYPE, array( 'hierarchical' => true, 'label' => 'Directory Categories', 'singular_name' => 'Directory Category', 'show_in_nav_menus' => true, 'update_count_callback' => '_update_post_term_count','query_var' => true, 'rewrite' => array('slug' => $category_slug) ) );
 		register_taxonomy(self::POST_TYPE_TAGS, self::POST_TYPE, array( 'hierarchical' => false, 'label' => 'Directory Tags', 'singular_name' => 'Directory Tag', 'show_in_nav_menus' => true, 'update_count_callback' => '_update_post_term_count', 'query_var' => true, 'rewrite' => array('slug' => $tags_slug) ) );
-
-		if (function_exists('flush_rewrite_rules'))
-			flush_rewrite_rules(false);
 	}
 
 	public function debug_on() {
@@ -3923,8 +3795,16 @@ class WPBDP_Plugin {
 		return $query;
 	}
 
+	/* theme filters */
+	public function _comments_template($template) {
+		if (get_post_type() == self::POST_TYPE && !$this->settings->get('show-comment-form'))
+			return WPBDP_TEMPLATES_PATH . '/empty-template.php';
+		return $template;
+	}
+
 
 }
 
 $wpbdp = new WPBDP_Plugin();
-//$wpbdp->debug_on();
+$wpbdp->init();
+// $wpbdp->debug_on();

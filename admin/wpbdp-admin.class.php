@@ -85,10 +85,12 @@ class WPBDP_Admin {
                          'wpbusdirman_uninstall');
 
         // just a little hack
-        global $submenu;
-        $submenu['wpbusdirman.php'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
-        $submenu['wpbusdirman.php'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
-        $submenu['wpbusdirman.php'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
+        if (current_user_can('activate_plugins')) {
+            global $submenu;
+            $submenu['wpbusdirman.php'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
+            $submenu['wpbusdirman.php'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
+            $submenu['wpbusdirman.php'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
+        }
     }
 
     function add_listing_metabox() {
@@ -406,6 +408,8 @@ class WPBDP_Admin {
 
     public function admin_settings() {
         global $wpbdp;
+
+        flush_rewrite_rules(false);
 
         if (isset($_REQUEST['resetdefaults']) && intval($_REQUEST['resetdefaults']) == 1) {
             $wpbdp->settings->reset_defaults();
