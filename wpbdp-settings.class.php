@@ -4,6 +4,8 @@ class WPBDP_Settings {
 
 	const PREFIX = 'wpbdp-';
 
+	const _EMAIL_RENEWAL_MESSAGE = "Your listing \"[listing]\" in category [category] expired on [expiration]. To renew your listing click the link below.\n[link]";
+
 	public function __construct() {
 		$this->groups = array();
 		$this->settings = array();
@@ -31,16 +33,21 @@ class WPBDP_Settings {
 		/* Listings settings */
 		$g = $this->add_group('listings', _x('Listings', 'admin settings', 'WPBDM'));
 		$s = $this->add_section($g, 'general', _x('General Settings', 'admin settings', 'WPBDM'));
-		$this->add_setting($s, 'listing-duration', _x('Listing duration for no-free sites (in days)', 'admin settings', 'WPBDM'), 'text', '365');
+		$this->add_setting($s, 'listing-duration', _x('Listing duration for no-fee sites (in days)', 'admin settings', 'WPBDM'), 'text', '365');
 		$this->add_setting($s, 'show-contact-form', _x('Include listing contact form on listing pages?', 'admin settings', 'WPBDM'), 'boolean', true);
 		$this->add_setting($s, 'show-comment-form', _x('Include comment form on listing pages?', 'admin settings', 'WPBDM'), 'boolean', false);
-		$this->add_setting($s, 'listing-renewal', _x('Turn on listing renewal option?', 'admin settings', 'WPBDM'), 'boolean', true);
 		$this->add_setting($s, 'show-listings-under-categories', _x('Show listings under categories on main page?', 'admin settings', 'WPBDM'), 'boolean', false);
 		$this->add_setting($s, 'override-email-blocking', _x('Override email Blocking?', 'admin settings', 'WPBDM'), 'boolean', false);
 		$this->add_setting($s, 'status-on-uninstall', _x('Status of listings upon uninstalling plugin', 'admin settings', 'WPBDM'), 'choice', 'draft', '',
 						   array('choices' => array('draft', 'trash')));
-		$this->add_setting($s, 'deleted-status', _x('Status of deleted listings', 'admin settings', 'WPBDM'), 'choice', 'draft', '',
+		$this->add_setting($s, 'deleted-status', _x('Status of deleted listings', 'admin settings', 'WPBDM'), 'choice', 'trash', '',
 						   array('choices' => array('draft', 'trash')));
+
+		$s = $this->add_section($g, 'listings/renewals', _x('Listing Renewal', 'admin settings', 'WPBDM'));
+		$this->add_setting($s, 'listing-renewal', _x('Turn on listing renewal option?', 'admin settings', 'WPBDM'), 'boolean', true);
+		$this->add_setting($s, 'listing-renewal-message', _x('Listing Renewal e-mail message', 'admin settings', 'WPBDM'), 'text',
+						   self::_EMAIL_RENEWAL_MESSAGE,
+						   _x('You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date and [link] for the actual renewal link.', 'admin settings', 'WPBDM'));
 
 		$s = $this->add_section($g, 'post/category', _x('Post/Category Settings', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, 'new-post-status', _x('Default new post status', 'admin settings', 'WPBDM'), 'choice', 'pending', '',
@@ -109,12 +116,12 @@ class WPBDP_Settings {
 
 		$s = $this->add_section($g, 'paypal', _x('PayPal Gateway Settings', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, 'paypal', _x('Activate Paypal?', 'admin settings', 'WPBDM'), 'boolean', false,
-						   _x('Will only work when the PayPal module is installed', 'admin settings', 'WPBDM'));
+						   _x('Will only work when the <a href="http://businessdirectoryplugin.com/premium-modules/">PayPal module</a> is installed', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, 'paypal-business-email', _x('PayPal Business Email', 'admin settings', 'WPBDM'));
 
 		$s = $this->add_section($g, '2checkout', _x('2Checkout Gateway Settings', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, '2checkout', _x('Activate 2Checkout?', 'admin settings', 'WPBDM'), 'boolean', false,
-						   _x('Will only work when the 2checkout module is installed', 'admin settings', 'WPBDM'));
+						   _x('Will only work when the <a href="http://businessdirectoryplugin.com/premium-modules/">2Checkout module</a> is installed', 'admin settings', 'WPBDM'));
 		$this->add_setting($s, '2checkout-seller', _x('2Checkout seller/vendor ID', 'admin settings', 'WPBDM'));
 
 		/* Registration settings */
@@ -243,7 +250,7 @@ class WPBDP_Settings {
 	public function set($name, $value, $onlyknown=true) {
 		$name = strtolower($name);
 
-		if ($onlynown && !isset($this->settings[$name]))
+		if ($onlyknown && !isset($this->settings[$name]))
 			return false;
 
 		if (isset($this->settings[$name]) && $this->settings[$name]->type == 'boolean') {
@@ -361,14 +368,14 @@ class WPBDP_Settings {
 									   );
 
 					if ($setting->validator) {
-						add_filter('pre_update_option_' . self::PREFIX . $setting->name, create_function('$n,$o', 'return WPBDP_Settings::_validate_setting("' . $setting->name . '", $n,$o);'), 2);
+						add_filter('pre_update_option_' . self::PREFIX . $setting->name, create_function('$n', 'return WPBDP_Settings::_validate_setting("' . $setting->name . '", $n);'), 2);
 					}
 				}
 			}
 		}
 	}
 
-	public static function _validate_setting($name, $newvalue, $oldvalue) {
+	public static function _validate_setting($name, $newvalue=null) {
 		$api = wpbdp_settings_api();
 		$setting = $api->settings[$name];
 
