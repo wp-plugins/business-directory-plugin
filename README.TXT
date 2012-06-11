@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget
 Requires at least: 3.0
 Tested up to: 3.3.1
-Last Updated: 2012-May-7
-Stable tag: tags/2.0.3
+Last Updated: 2012-June-11
+Stable tag: tags/2.0.4
 
 Business Directory Plugin for WordPress (Formerly WP Business Directory Manager) is a flexible plugin for WordPress business directory creation but useful for a variety of other purposes.  Create any WordPress directory with it. 
 
@@ -95,6 +95,54 @@ If you are having problems please visit http://www.businessdirectoryplugin.com f
 
 
 == Changelog ==
+
+Version 2.0.4
+
+   1. Upgrade to image upload/management system
+   
+   2. Fixed form for creating new listings, both admin and user side
+   
+   3. Fixed listing renewal, emails now go out prior to expiration
+   
+   4. Payment modules upgraded to handle renewals
+   
+   5. POST variables now properly configured for Windows and Linux
+   
+   6. div's properly closed on Submit Listing
+   
+   7. Comments will display when option is checked now
+   
+   8. Directory definition issue with wp-content fixed
+   
+   9. Require registration option now properly displays in admin panel
+   
+   10. Field metadata is hidden and properly namespaced
+   
+   11. Sticky listings in category no longer cause No Listings Found
+   
+   12. Translation issue fixed
+   
+   13. Location field will not disappear on upgrade
+   
+   14. Invalid argument foreach() issue fixed
+   
+   15. Email now goes to site owner as expected
+   
+   16. Submit Listing layout problems fixed
+   
+   17. Submit listing duplicate fields display fixed
+   
+   18. Manage fees upgraded for renewals
+   
+   19. Image displays in list and single view properly now
+   
+   20. Editing listings will not randomly change category now
+   
+   21. Users can control which image is set for the thumbnail of a listing now
+   
+   22. Support for multiple categories in a listing added
+   
+   23. Add New Listing navigation bug fixed
 
 Version 2.0.3
 
