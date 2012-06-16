@@ -85,7 +85,16 @@ class WPBDP_ListingsAPI {
 	}
 
 	public function get_thumbnail_id($listing_id) {
-		return intval(get_post_meta($listing_id, '_wpbdp[thumbnail_id]', true));
+		if ($thumbnail_id = get_post_meta($listing_id, '_wpbdp[thumbnail_id]', true)) {
+			return intval($thumbnail_id);
+		} else {
+			if ($images = $this->get_images($listing_id)) {
+				update_post_meta($listing_id, '_wpbdp[thumbnail_id]', $images[0]->ID);
+				return $images[0]->ID;
+			}
+		}
+		
+		return 0;
 	}
 
 	public function get_images($listing_id) {
@@ -292,9 +301,9 @@ class WPBDP_ListingsAPI {
 			$current_user = wp_get_current_user();
 
 			if ($current_user->ID == 0) {
-				if (wpbdp_get_option('require-login'))
+				if (wpbdp_get_option('require-login')) {
 					exit;
-
+				}
 				// create user
 				if ($email_field = $formfields_api->getFieldsByValidator('EmailValidator', true)) {
 					$email = $formfields_api->extract($listingfields, $email_field);

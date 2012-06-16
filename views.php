@@ -130,7 +130,7 @@ class WPBDP_DirectoryController {
 					$html .= "<p>" . _x("There was a problem encountered. Your message has not been sent", 'contact-message', "WPBDM") . "</p>";
 				}
 
-				$html .= sprintf('<p><a href="%s">%s</a></p>', get_permalink($listing_id), _x('Return to listing.'));
+				$html .= sprintf('<p><a href="%s">%s</a></p>', get_permalink($listing_id), _x('Return to listing.', 'contact-message', "WPBDM"));
 
 				return $html;
 			} else {
@@ -182,9 +182,9 @@ class WPBDP_DirectoryController {
 			}
 		}
 
-		if (wpbdp_get_option('require-login') && !is_user_logged_in())
-			return wpbdp_render_msg(_ex("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 minutes.", 'templates', 'WPBDM'));
-
+		if (wpbdp_get_option('require-login') && !is_user_logged_in()) {
+			return wpbdp_render_msg(_x("You are not currently logged in. Please login or register first. When registering, you will receive an activation email. Be sure to check your spam if you don't see it in your email within 60 minutes.", 'templates', 'WPBDM'));
+		}
 		$step = wpbdp_getv($_POST, '_step', 'fields');
 		$this->_listing_data = array('listing_id' => 0,
 									 'fields' => array(),
@@ -240,6 +240,7 @@ class WPBDP_DirectoryController {
 						break;
 					case 'tags':
 						$tags = wpbdp_get_listing_field_value($listing_id, $field);
+						array_walk($tags, create_function('&$x', '$x = $x->name;'));
 						$default_value = implode(',', $tags ? $tags : array());
 						break;
 					default:
