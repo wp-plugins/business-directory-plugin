@@ -2,7 +2,6 @@
 require_once(WPBDP_PATH . 'admin/admin-pages.php');
 require_once(WPBDP_PATH . 'admin/fees.php');
 require_once(WPBDP_PATH . 'admin/form-fields.php');
-require_once(WPBDP_PATH . 'admin/uninstall.php');
 
 if (!class_exists('WPBDP_Admin')) {
 
@@ -14,6 +13,8 @@ class WPBDP_Admin {
         add_action('admin_init', array($this, 'handle_actions'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'add_metaboxes'));
+        add_action('admin_init', array($this, 'check_for_required_fields'));
+        add_action('delete_post', array($this, '_delete_post_metadata'));
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_notices', array($this, 'admin_notices'));
         add_action('admin_enqueue_scripts', array($this, 'admin_javascript'));
@@ -32,6 +33,8 @@ class WPBDP_Admin {
         add_action('wp_ajax_wpbdp-uploadimage', array($this, '_upload_image'));
         add_action('wp_ajax_wpbdp-deleteimage', array($this, '_delete_image'));
         add_action('wp_ajax_wpbdp-listingimages', array($this, '_listing_images'));
+
+        add_action('admin_footer', array($this, '_add_bulk_actions'));
     }
 
     function admin_javascript() {
@@ -91,7 +94,7 @@ class WPBDP_Admin {
                          _x('Uninstall', 'admin menu', 'WPBDM'),
                          'activate_plugins',
                          'wpbdman_m1',
-                         'wpbusdirman_uninstall');
+                         array($this, 'uninstall_plugin'));
 
         // just a little hack
         if (current_user_can('activate_plugins')) {
@@ -100,6 +103,15 @@ class WPBDP_Admin {
             $submenu['wpbusdirman.php'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
             $submenu['wpbusdirman.php'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
             $submenu['wpbusdirman.php'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
+        }
+    }
+
+    public function _delete_post_metadata($post_id) {
+        global $wpdb;
+
+        if ( current_user_can('delete_posts') && get_post_type($post_id) == wpbdp_post_type() ) {
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_listing_fees WHERE listing_id = %d", $post_id));
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_payments WHERE listing_id = %d", $post_id));
         }
     }
 
@@ -251,30 +263,31 @@ class WPBDP_Admin {
         if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) 
             return;
 
-        // Fix listings added through admin site
-        if (is_admin())
+        if (is_admin() && isset($_POST['post_type']) && $_POST['post_type'] == wpbdp_post_type()) {
+            // Fix listings added through admin site
             wpbdp_listings_api()->set_default_listing_settings($post_id);
 
-        // Save custom fields
-        if (isset($_POST['wpbdp-listing-fields-nonce']) && wp_verify_nonce( $_POST['wpbdp-listing-fields-nonce'], plugin_basename( __FILE__ ) ) ) {
-            // save custom fields
-            $formfields_api = wpbdp_formfields_api();
-            $listingfields = wpbdp_getv($_POST, 'listingfields', array());
-            
-            foreach ($formfields_api->getFieldsByAssociation('meta') as $field) {
-                if (isset($listingfields[$field->id])) {
-                    if ($value = $formfields_api->extract($listingfields, $field)) {
-                        if (in_array($field->type, array('multiselect', 'checkbox'))) {
-                            $value = implode("\t", $value);
-                        }
+            // Save custom fields
+            if (isset($_POST['wpbdp-listing-fields-nonce']) && wp_verify_nonce( $_POST['wpbdp-listing-fields-nonce'], plugin_basename( __FILE__ ) ) ) {
+                // save custom fields
+                $formfields_api = wpbdp_formfields_api();
+                $listingfields = wpbdp_getv($_POST, 'listingfields', array());
+                
+                foreach ($formfields_api->getFieldsByAssociation('meta') as $field) {
+                    if (isset($listingfields[$field->id])) {
+                        if ($value = $formfields_api->extract($listingfields, $field)) {
+                            if (in_array($field->type, array('multiselect', 'checkbox'))) {
+                                $value = implode("\t", $value);
+                            }
 
-                        update_post_meta($post_id, '_wpbdp[fields][' . $field->id . ']', $value);
+                            update_post_meta($post_id, '_wpbdp[fields][' . $field->id . ']', $value);
+                        }
                     }
                 }
-            }
 
-            if (isset($_POST['thumbnail_id']))
-                update_post_meta($post_id, '_wpbdp[thumbnail_id]', $_POST['thumbnail_id']);
+                if (isset($_POST['thumbnail_id']))
+                    update_post_meta($post_id, '_wpbdp[thumbnail_id]', $_POST['thumbnail_id']);
+            }
         }
     }
 
@@ -321,9 +334,11 @@ class WPBDP_Admin {
                                  add_query_arg('wpbdmaction', 'cancelfeatured'),
                                  _x('Downgrade', 'admin metabox', 'WPBDM'));
                 } else {
-                    echo sprintf('<a href="%s">%s</a>',
-                                 add_query_arg('wpbdmaction', 'upgradefeatured'),
-                                 __('Upgrade'));
+                    if (current_user_can('activate_plugins')) {
+                        echo sprintf('<a href="%s">%s</a>',
+                                     add_query_arg('wpbdmaction', 'upgradefeatured'),
+                                     __('Upgrade'));
+                    }
                 }
             echo '</dd>';
         echo '</dl>';
@@ -391,12 +406,43 @@ class WPBDP_Admin {
         $this->messages = array();
     }
 
+    public function _add_bulk_actions() {
+        if ($screen = get_current_screen()) {
+            if ($screen->id == 'edit-' . wpbdp_post_type()) {
+                if (isset($_GET['post_type']) && $_GET['post_type'] == WPBDP_Plugin::POST_TYPE) {
+                    $bulk_actions = array('sep0' => '--',
+                                          'publish' => _x('Publish Listing', 'admin actions', 'WPBDM'),
+                                          'sep1' => '--',
+                                          'upgradefeatured' => _x('Upgrade to Featured', 'admin actions', 'WPBDM'),
+                                          'cancelfeatured' => _x('Downgrade to Normal', 'admin actions', 'WPBDM'),
+                                          'sep2' => '--',
+                                          'setaspaid' => _x('Set Paid', 'admin actions', 'WPBDM'),
+                                          'setasnotpaid' => _x('Set Not Paid', 'admin actions', 'WPBDM')
+                                         );
+
+
+                    // the 'bulk_actions' filter doesn't really work for this until this bug is fixed: http://core.trac.wordpress.org/ticket/16031
+                    echo '<script type="text/javascript">';
+
+                    foreach ($bulk_actions as $action => $text) {
+                        echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
+                                    'action', 'listing-' . $action, add_query_arg('wpbdmaction', $action), $text);
+                        echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
+                                    'action2', 'listing-' . $action, '', $text);          
+                    }
+
+                    echo '</script>';
+                }
+            }
+        }
+    }
+
     function handle_actions() {
         if (!isset($_REQUEST['wpbdmaction']) || !isset($_REQUEST['post']))
             return;
 
         $action = $_REQUEST['wpbdmaction'];
-        $post_id = intval($_REQUEST['post']);
+        $posts = is_array($_REQUEST['post']) ? $_REQUEST['post'] : array($_REQUEST['post']);
 
         $listings_api = wpbdp_listings_api();
 
@@ -404,26 +450,66 @@ class WPBDP_Admin {
             exit;
 
         switch ($action) {
+            case 'publish':
+                foreach ($posts as $post_id) {
+                    wp_publish_post($post_id);
+                }
+
+                $this->messages[] = _nx('The listing has been published.',
+                                        'The listings have been published.',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');
+                break;
+
             case 'setaspaid':
-                if ($listings_api->set_payment_status($post_id, 'paid'))
-                    $this->messages[] = __("The listing status has been set as paid.","WPBDM");
+                foreach ($posts as $post_id) {
+                    $listings_api->set_payment_status($post_id, 'paid');
+                }
+
+                $this->messages[] = _nx('The listing status has been set as paid.',
+                                        'The listings status has been set as paid.',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');
                 break;
             
             case 'setasnotpaid':
-                if ($listings_api->set_payment_status($post_id, 'not-paid'))
-                    $this->messages[] = __("The listing status has been changed to 'not paid'.","WPBDM");
+                foreach ($posts as $post_id) {
+                    $listings_api->set_payment_status($post_id, 'not-paid');
+                }
+
+                $this->messages[] = _nx('The listing status has been set as "not paid".',
+                                        'The listings status has been set as "not paid".',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');
                 break;
 
             case 'upgradefeatured':
-                update_post_meta($post_id, '_wpbdp[sticky]', 'sticky');
+                foreach ($posts as $post_id) {
+                    update_post_meta($post_id, '_wpbdp[sticky]', 'sticky');
+                }
             
+                $this->messages[] = _nx('The listing has been upgraded.',
+                                        'The listings have been upgraded.',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');
+
                 $this->messages[] = __("The listing has been upgraded.","WPBDM");
                 break;
 
             case 'cancelfeatured':
-                delete_post_meta($post_id, "_wpbdp[sticky]");
+                foreach ($posts as $post_id) {
+                    delete_post_meta($post_id, "_wpbdp[sticky]");
+                }
                 
-                $this->messages[] = __("The listing has been downgraded.","WPBDM");
+                $this->messages[] = _nx('The listing has been downgraded.',
+                                        'The listings have been downgraded.',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');
                 break;
 
             case 'approvetransaction':
@@ -455,7 +541,7 @@ class WPBDP_Admin {
                 break;
         }
 
-        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id'), $_SERVER['REQUEST_URI'] );
+        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id', 'post'), $_SERVER['REQUEST_URI'] );
     }
 
     function add_custom_views($views) {
@@ -545,15 +631,19 @@ class WPBDP_Admin {
         $status_links = '';
 
         if ($paid_status != 'paid')
-            $status_links .= sprintf('<span><a href="%s">%s</a> | </span>',
+            $status_links .= sprintf('<span><a href="%s">%s</a></span>',
                                     add_query_arg(array('wpbdmaction' => 'setaspaid', 'post' => $post->ID)),
                                     __('Paid', 'WPBDM'));
-        $status_links .= sprintf('<span><a href="%s">%s</a></span>',
+        else
+            $status_links .= sprintf('<span><a href="%s">%s</a></span>',
                                   add_query_arg(array('wpbdmaction' => 'setasnotpaid', 'post' => $post->ID)),
                                   __('Not paid', 'WPBDM'));
 
         echo sprintf('<span class="status %s">%s</span>', $paid_status, strtoupper($paid_status));
-        echo sprintf('<div class="row-actions"><b>%s:</b> %s</div>', __('Set as', 'WPBDM'), $status_links);
+
+        if (current_user_can('activate_plugins')) {
+            echo sprintf('<div class="row-actions"><b>%s:</b> %s</div>', __('Set as', 'WPBDM'), $status_links);
+        }
     }
 
     private function sticky_status_column() {
@@ -577,14 +667,16 @@ class WPBDP_Admin {
 
         echo '<div class="row-actions">';
 
-        if ($status == 'sticky') {
-            echo sprintf('<span><a href="%s">%s</a></span>',
-                         add_query_arg(array('wpbdmaction' => 'cancelfeatured', 'post' => $post->ID)),
-                         '<b>↓</b> ' . __('Downgrade to Normal', 'WPBDM'));
-        } else {
-            echo sprintf('<span><a href="%s">%s</a></span>',
-                         add_query_arg(array('wpbdmaction' => 'upgradefeatured', 'post' => $post->ID)),
-                         '<b>↑</b> ' . __('Upgrade to Featured', 'WPBDM'));
+        if (current_user_can('activate_plugins')) {
+            if ($status == 'sticky') {
+                echo sprintf('<span><a href="%s">%s</a></span>',
+                             add_query_arg(array('wpbdmaction' => 'cancelfeatured', 'post' => $post->ID)),
+                             '<b>↓</b> ' . __('Downgrade to Normal', 'WPBDM'));
+            } else {
+                echo sprintf('<span><a href="%s">%s</a></span>',
+                             add_query_arg(array('wpbdmaction' => 'upgradefeatured', 'post' => $post->ID)),
+                             '<b>↑</b> ' . __('Upgrade to Featured', 'WPBDM'));
+            }
         }
 
         echo '</div>';
@@ -612,6 +704,65 @@ class WPBDP_Admin {
         wpbdp_render_page(WPBDP_PATH . 'admin/templates/settings.tpl.php',
                           array('wpbdp_settings' => $wpbdp->settings),
                           true);
+    }
+
+    /* Uninstall. */
+    public function uninstall_plugin() {
+        if (isset($_POST['doit']) && $_POST['doit'] == 1) {
+            $new_status = wpbdp_get_option('status-on-uninstall');
+            $posts = get_posts(array('post_type' => wpbdp_post_type()));
+
+            foreach ($posts as $post) {
+                $post_array = array('ID' => $post->ID,
+                                    'post_type' => wpbdp_post_type(),
+                                    'post_status' => $new_status);
+                wp_update_post($post_array);
+            }
+
+            // delete options
+            $settings_api = wpbdp_settings_api();
+            $settings_api->reset_defaults();
+
+            // clear scheduled hooks
+            wp_clear_scheduled_hook('wpbdp_listings_expiration_check');
+
+            // deactivate plugin
+            deactivate_plugins(plugin_basename(WPBDP_PATH . 'wpbusdirman.php'), true);
+            
+            echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/uninstall-complete.tpl.php');
+        } else {
+            echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/uninstall-confirm.tpl.php');
+        }
+    }
+
+    /* Required fields check. */
+    public function check_for_required_fields() {
+        $formfields_api = wpbdp_formfields_api();
+
+        if (isset($_REQUEST['page']) && $_REQUEST['page'] == 'wpbdp_admin_formfields' &&
+            isset($_REQUEST['action']) && $_REQUEST['action'] == 'createrequired') {
+            // do not display the warning inside the page creating the required fields
+            return;
+        }
+
+        if ($missing = $formfields_api->check_for_required_fields()) {
+            if (count($missing) > 1) {
+                $message = sprintf(_x('<b>Business Directory Plugin</b> requires fields with the following associations in order to work correctly: <b>%s</b>.', 'admin', 'WPBDM'), join(', ', $missing));
+            } else {
+                $message = sprintf(_x('<b>Business Directory Plugin</b> requires a field with a <b>%s</b> association in order to work correctly.', 'admin', 'WPBDM'), $missing[0]);
+            }
+            $message .= '<br />';
+            $message .= _x('You can create these custom fields by yourself inside "Manage Form Fields" or let Business Directory do this for you automatically.', 'admin', 'WPBDM');
+            $message .= '<br /><br />';
+            $message .= sprintf('<a href="%s">%s</a> | ',
+                                admin_url('admin.php?page=wpbdp_admin_formfields'),
+                                _x('Go to "Manage Form Fields"', 'admin', 'WPBDM'));
+            $message .= sprintf('<a href="%s">%s</a>',
+                                admin_url('admin.php?page=wpbdp_admin_formfields&action=createrequired'),
+                                _x('Create these required fields for me', 'admin', 'WPBDM'));
+
+            $this->messages[] = array($message, 'error');
+        }
     }
 
 }
