@@ -73,19 +73,14 @@ Backup your WordPress database and files before you install or update. If you ar
 
 2.  Activate the plugin
 
-3.	Create a new WordPress Page for your business directory. You can name the page whatever you want. Insert the following code into the page [WPBUSDIRMANUI]. The plugin needs this code to work.
+3.	Create a new WordPress Page for your business directory. You can name the page whatever you want. Insert ONE of the following codes into the page [WPBUSDIRMANUI] or [businessdirectory]. The plugin needs this code to work.
 
-4.  Create another page for your google checkout processor. Again you can name it anything you want. It must be created as a child page under your the business directory page you created in step 3. Insert [WPBUSDIRMANGOOGLECHECKOUT] as the page content. (Include the brackets) 
+4.  You should see a menu tab with the name Directory Admin in your admin dashboard sidebar. You need to click the tab to access "Manage Options", "Manage Fees" and "Manage Form Fields" and other options. 
 
-5. 	If you want to include a "Submit Listings" page, create a child page under the parent page you've created. Name the page whatever you want. Insert the following code into the page [WPBUSDIRMANADDLISTING]. The "Submit Listings" page needs this code to work.
+5. 	You will also see a new dashboard menu tab named "Directory". This tab is where you manage your listings. It works very much the same as the "Posts" tab. Your directory listings are saved as a custom post type. You create your directory categories by going to Directory->Categories and adding the directory categories there. 
 
-6. 	If you want to include a "Manage Listings" page, create a second child page under the parent page you've created. Name the second child page whatever you want. Insert the following code into the page [WPBUSDIRMANMANAGELISTING]. The "Manage Listings" page needs this code to work.
+6.  You can access you directory on your site by visiting http://<your-site-url>/<page-slug-from step-3>.  For example, if you created a page called "Business Listings", that would have a slug of business-listings and the URL would be http://site.com/business-listings.
 
-7.	You can also include a "View Listings" page by creating another child page under the directory parent page and adding the shortcode [WPBUSDIRMANMVIEWLISTINGS]
-
-8.  You should see a menu tab with the name Directory Admin in your admin dashboard sidebar. You need to click the tab to access "Manage Options", "Manage Fees" and "Manage Form Fields" and other options. 
-
-9. 	You will also see a new dashboard menu tab named "Directory". This tab is where you manage your listings. It works very much the same as the "Posts" tab. Your directory listings are saved as a custom post type. You create your directory categories by going to Directory->Categories and adding the directory categories there. 
 
 Manage Form Fields allows you to change the form to suit your needs. You can edit the existing fields and add new fields
 
