@@ -79,7 +79,7 @@ Backup your WordPress database and files before you install or update. If you ar
 
 5. 	You will also see a new dashboard menu tab named "Directory". This tab is where you manage your listings. It works very much the same as the "Posts" tab. Your directory listings are saved as a custom post type. You create your directory categories by going to Directory->Categories and adding the directory categories there. 
 
-6.  You can access you directory on your site by visiting http://<your-site-url>/<page-slug-from step-3>.  For example, if you created a page called "Business Listings", that would have a slug of business-listings and the URL would be http://site.com/business-listings.
+6.  You can access your directory on your site by visiting http://[your-site-url]/[page-slug-from step-3].  For example, if you created a page called "Business Listings", that would have a slug of business-listings and the URL would be http://site.com/business-listings.
 
 
 Manage Form Fields allows you to change the form to suit your needs. You can edit the existing fields and add new fields
@@ -477,6 +477,8 @@ Bug related to "Manage Fees" has been fixed. This bug resulted in admin being to
 
 == Usage Doc ==
 
+For complete documentation on the plugin, please visit the [BD Documentation Site](http://businessdirectoryplugin.com/docs)
+
 1. Setting up your categories
 
 Go to your Dashboard and look for the "Directory" menu box. Listed under the Directory menu box are the links "Add New", "Categories" and "Tags". Click the "Categories" link and add your categories just the same way you would normally add categories under Posts->Categories.
@@ -500,6 +502,7 @@ widget-ready theme.
 
 == Frequently Asked Questions ==
 
+For the definitive FAQ section, please vist the [FAQ Section of the Forum](http://businessdirectoryplugin.com/support-forum/faq)
 
 1. How do I setup my categories?
 You setup your categories under the "Directory" menu tab that will appear in the dashboard menu when you install the plugin. Under the Directory menu tab there is a link "Categories". You click this and add your categories the same way you do with your normal WordPress blog.
