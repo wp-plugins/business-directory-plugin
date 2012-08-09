@@ -1,26 +1,13 @@
-<div id="wpbdmentry">
-	<div id="lco">
-		<div class="left buttons">
-			<?php echo $submit_listing_button; ?>
-			<?php echo $view_listings_button; ?>
-		</div>
-		
-		<div class="right">
-			<?php if (wpbdp_get_option('show-search-listings')): ?>
-			<form id="wpbdmsearchform" action="<?php echo esc_url( home_url( '/' ) ); ?>" method="get">
-			<input id="intextbox" maxlength="150" name="s" size="20" type="text" value="" />
-			<input name="post_type" type="hidden" value="<?php echo wpbdp_post_type(); ?>" />
-			<input id="wpbdmsearchsubmit" class="wpbdmsearchbutton" type="submit" value="<?php _ex('Search Listings', 'templates', 'WPBDM'); ?>" />
-			</form>
-			<?php endif; ?>
-		</div>
+<div id="wpbdp-main-page" class="wpbdp-main-page wpbdp-main businessdirectory wpbdp-page">
+	<div class="wpbdp-bar cf">
+        <?php wpbdp_the_main_links(); ?>
+        <?php wpbdp_the_search_form(); ?>
 	</div>
 
-	<div id="wpbusdirmancats">
-		<div style="clear:both;"></div>
-		<ul>
-			<?php echo wpbusdirman_post_list_categories(); ?>
-		</ul>
+	<div id="wpbdp-categories" class="cf">
+		<?php wpbdp_the_directory_categories(); ?>
 	</div>
-	<br style="clear: both;" />
+
+    <?php if ($listings) echo $listings; ?>
+
 </div>

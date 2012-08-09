@@ -145,9 +145,41 @@ class WPBDP_FormFieldsAPI {
 		);		
 	}
 
+	public function getShortNames() {
+		if ($names = get_option('wpbdp-field-short-names', false)) {
+			return $names;
+		}
+
+		return $this->calculateShortNames();
+	}
+
+	private function calculateShortNames() {
+		$fields = $this->getFields();
+		$names = array();
+
+		foreach ($fields as $field) {
+			$name = strtolower($field->label);
+			$name = str_replace(array(',', ';'), '', $name);
+			$name = str_replace(array(' ', '/'), '-', $name);
+
+			if ($name == 'images' || $name == 'image' || $name == 'username' || in_array($name, $names)) {
+				$name = $field->id . '/' . $name;
+			}
+			
+			$names[$field->id] = $name;
+		}
+
+		update_option('wpbdp-field-short-names', $names);
+
+		return $names;
+	}
+
 	private function normalizeField(&$field) {
 		$field->display_options = array_merge(array('hide_field' => false, 'show_in_excerpt' => false), $field->display_options ? (array) unserialize($field->display_options) : array());
 		$field->field_data = $field->field_data ? unserialize($field->field_data) : null;
+
+		if (isset($field->field_data['options']) && !is_array($field->field_data['options']))
+			$field->field_data['options'] = null;
 	}
 
 	public function getField($id) {
@@ -264,19 +296,22 @@ class WPBDP_FormFieldsAPI {
 			$errors[] = WPBDP_FormFieldValidators::required_msg($field->label, $value);
 
 		if (!empty($value)) {
-			if (is_array($value))
-				return true; // TODO: handle array values aswell
-
-			if ($field->validator && !call_user_func('WPBDP_FormFieldValidators::' . $field->validator, $value))
-				$errors[] = call_user_func('WPBDP_FormFieldValidators::' . $field->validator . '_msg', $field->label, $value);
-
 			if ($field->association == 'category') {
-				if (get_term_by('id', $value, wpbdp_categories_taxonomy()) == false) {
-					$errors[] = _x('Please select a valid category.', 'form-fields-api', 'WPBDM');
+				$categories = is_array($value) ? $value : array($value);
+
+				foreach ($categories as $catid) {
+					if (get_term_by('id', $catid, wpbdp_categories_taxonomy()) == false) {
+						$errors[] = _x('Please select a valid category.', 'form-fields-api', 'WPBDM');
+						return false;
+					}
 				}
 			}
 
-			// TODO: check selected options in select/multiselect/radio/checkbox are valid
+			if (is_array($value))
+				return true; // TODO: check selected options in select/multiselect/radio/checkbox are valid
+
+			if ($field->validator && !call_user_func('WPBDP_FormFieldValidators::' . $field->validator, $value))
+				$errors[] = call_user_func('WPBDP_FormFieldValidators::' . $field->validator . '_msg', $field->label, $value);
 		}
 
 		if ($errors)
@@ -419,13 +454,17 @@ class WPBDP_FormFieldsAPI {
 
 		$field = $field_;
 		if (isset($field['field_data'])) {
-			if (isset($field['field_data']['options'])) {
+			if (isset($field['field_data']['options']) && $field['field_data']['options']) {
 				$field['field_data']['options'] = explode(',', $field['field_data']['options']);
 
 				// sanitize options
 				$field['field_data']['options'] = array_map('trim', $field['field_data']['options']);
 				$field['field_data']['options'] = array_map('stripslashes', $field['field_data']['options']);
 			}
+
+			if (isset($field['field_data']['open_in_new_window']))
+				$field['field_data']['open_in_new_window'] = intval($field['field_data']['open_in_new_window']) > 0 ? true : false;
+
 			$field['field_data'] = serialize($field['field_data']);
 		} else {
 			$field['field_data'] = null;
@@ -453,15 +492,19 @@ class WPBDP_FormFieldsAPI {
 			$field['display_options'] = null;
 		}
 
-		if ($this->isValidField($field, &$errors)) {
+		$success = false;
+
+		if ($this->isValidField($field, $errors)) {
 			if (isset($field['id'])) {
-				return $wpdb->update("{$wpdb->prefix}wpbdp_form_fields", $field, array('id' => $field['id'])) !== false;
+				$success = $wpdb->update("{$wpdb->prefix}wpbdp_form_fields", $field, array('id' => $field['id'])) !== false;
 			} else {
-				return $wpdb->insert("{$wpdb->prefix}wpbdp_form_fields", $field);
+				$success = $wpdb->insert("{$wpdb->prefix}wpbdp_form_fields", $field);
 			}
 		}
 
-		return false;
+		$this->calculateShortNames();
+
+		return $success;
 	}
 
 	public function deleteField($id, &$errors=null) {
@@ -490,12 +533,17 @@ class WPBDP_FormFieldsAPI {
 	/* Field rendering */
 	public function render(&$field, $value=null, $output=false) {
 		if ($output) {
-			echo $this->render(&$field, $value, false);
+			echo $this->render($field, $value, false);
 			return;
 		}
 
 		$args = func_get_args();
-		return call_user_func(array($this, 'render_' . $field->type), $field, $value);
+		
+		$html  = '';
+		$html .= sprintf('<div class="wpbdp-form-field %s %s">', $field->type, $field->is_required ? 'required' : '');
+		$html .= call_user_func(array($this, 'render_' . $field->type), $field, $value); 
+		$html .= '</div>';
+		return $html;
 	}
 
 	public function render_textfield(&$field, $value=null) {
@@ -518,7 +566,7 @@ class WPBDP_FormFieldsAPI {
 	}
 	
 	public function render_select(&$field, $value=null, $multiselect=false) {
-		if (!is_array($value))
+		if (!is_array($value))	
 			return $this->render_select($field, explode("\t", $value), $multiselect);
 
 		$html = '';
@@ -534,19 +582,33 @@ class WPBDP_FormFieldsAPI {
 		}
 
 		if ($field->association == 'category') {
-			$html .= wp_dropdown_categories( array(
-					'taxonomy' => wpbdp()->get_post_type_category(),
-					'show_option_none' => _x('Choose One', 'form-fields-api category-select', 'WPBDM'),
-					'orderby' => 'name',
-					'selected' => $value[0],
-					'order' => 'ASC',
-					'hide_empty' => 0,
-					'hierarchical' => 1,
-					'echo' => 0,
-					'id' => 'wpbdp-field-' . $field->id,
-					'name' => 'listingfields[' . $field->id . ']',
-					'class' => $field->is_required ? 'inselect required' : 'inselect'
-				) );
+				$html .= wp_dropdown_categories( array(
+						'taxonomy' => wpbdp()->get_post_type_category(),
+						'show_option_none' => _x('Choose One', 'form-fields-api category-select', 'WPBDM'),
+						'orderby' => 'name',
+						'selected' => $multiselect ? null : $value[0],
+						'order' => 'ASC',
+						'hide_empty' => 0,
+						'hierarchical' => 1,
+						'echo' => 0,
+						'id' => 'wpbdp-field-' . $field->id,
+						'name' => 'listingfields[' . $field->id . ']',
+						'class' => $field->is_required ? 'inselect required' : 'inselect'
+					) );
+			
+			if ($multiselect) {
+				$html = preg_replace("/\\<select(.*)name=('|\")(.*)('|\")(.*)\\>/uiUs",
+									 "<select name=\"$3[]\" multiple=\"multiple\" $1 $5>",
+									 $html);
+
+				if ($value) {
+					foreach ($value as $catid) {
+						$html = preg_replace("/\\<option(.*)value=('|\"){$catid}('|\")(.*)\\>/uiU",
+											 "<option value=\"{$catid}\" selected=\"selected\" $1 $4>",
+											 $html);
+					}
+				}
+			}
 		} else {
 			$html .= sprintf('<select id="%s" name="%s" %s class="%s %s">',
 							'wpbdp-field-' . $field->id,
@@ -582,7 +644,6 @@ class WPBDP_FormFieldsAPI {
 		return $html;
 	}
 
-	// TODO
 	public function render_radio(&$field, $value=null) {
 		$html = '';
 

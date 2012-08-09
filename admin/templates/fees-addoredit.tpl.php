@@ -1,4 +1,5 @@
 <?php
+if (!function_exists('_wpbdp_render_category')) {
 function _wpbdp_render_category($cat, $selected=array(), $level=0) {
 	$html = '';
 
@@ -14,6 +15,7 @@ function _wpbdp_render_category($cat, $selected=array(), $level=0) {
 	}
 
 	return $html;	
+}
 }
 ?>
 
@@ -90,7 +92,7 @@ $fee = isset($fee) ? $fee : null;
 					<input name="fee[images]"
 						   type="text"
 						   aria-required="true"
-						   value="<?php echo wpbdp_getv($post_values, 'images', $fee ? $fee->images : ''); ?>"
+						   value="<?php echo wpbdp_getv($post_values, 'images', $fee ? $fee->images : '0'); ?>"
 						   style="width: 80px;" />
 				</td>
 			</tr>
@@ -104,7 +106,7 @@ $fee = isset($fee) ? $fee : null;
 				</th>
 				<td>
 					<select name="fee[categories][categories][]" multiple="multiple" size="10">
-						<option value="0" <?php echo in_array(0, $post_values_categories) ? 'selected="selected"' : ''; ?>><?php _ex('* All Categories *', 'fees admin', 'WPBDM'); ?></option>
+						<option value="0" <?php echo in_array(0, $post_values_categories) || empty($post_values_categories) ? 'selected="selected"' : ''; ?>><?php _ex('* All Categories *', 'fees admin', 'WPBDM'); ?></option>
 						<?php
 						$directory_categories = wpbdp_categories_list();
 						

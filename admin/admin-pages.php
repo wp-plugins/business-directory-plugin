@@ -20,13 +20,12 @@ function wpbdp_admin_footer()
 /* Admin home screen setup begin */
 function wpbusdirman_home_screen()
 {
-	global $wpbdmposttypecategory,$wpbusdirmanconfigoptionsprefix,$wpbusdirman_hastwocheckoutmodule,$wpbusdirman_haspaypalmodule,$wpbusdirman_hasgooglecheckoutmodule;
 	$listyle="style=\"width:auto;float:left;margin-right:5px;\"";
 	$listyle2="style=\"width:200px;float:left;margin-right:5px;\"";
 	$html = '';
 
 	$html .= wpbdp_admin_header();
-	$wpbusdirman_myterms = get_terms($wpbdmposttypecategory, 'orderby=name&hide_empty=0');
+	$wpbusdirman_myterms = get_terms(wpbdp_categories_taxonomy(), 'orderby=name&hide_empty=0');
 	if($wpbusdirman_myterms)
 	{
 		foreach($wpbusdirman_myterms as $wpbusdirman_myterm)
@@ -38,7 +37,7 @@ function wpbusdirman_home_screen()
 	{
 		foreach($wpbusdirman_postcatitems as $wpbusdirman_postcatitem)
 		{
-			$wpbusdirman_tlincat=&get_term( $wpbusdirman_postcatitem, $wpbdmposttypecategory, '', '' );
+			$wpbusdirman_tlincat=&get_term( $wpbusdirman_postcatitem, wpbdp_categories_taxonomy(), '', '' );
 			$wpbusdirman_totallistingsincat[]=$wpbusdirman_tlincat->count;
 		}
 		$wpbusdirman_totallistings=array_sum($wpbusdirman_totallistingsincat);
@@ -56,9 +55,9 @@ function wpbusdirman_home_screen()
 							$html.=__("You have payments turned on but all your gateways are set to hidden. Your system will run as if payments are turned off until you fix the problem. To fix go to <i>Manage options > Payment</i> and unhide at least 1 payment gateway, or if it is your intention not to charge a payment fee set payments to off instead of on.","WPBDM");
 							$html.="</p>";
 	}
-	$html .= "<ul><li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdp_settings\">" . __("Configure/Manage Options","WPBDM") . "</a></li>";
-	$html .= "<li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdman_c2\">" . __("Setup/Manage Fees","WPBDM") . "</a></li>";
-	$html .= "<li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdman_c3\">" . __("Setup/Manage Form Fields","WPBDM") . "</a></li>";
+	$html .= "<ul><li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdp_admin_settings\">" . __("Configure/Manage Options","WPBDM") . "</a></li>";
+	$html .= "<li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdp_admin_fees\">" . __("Setup/Manage Fees","WPBDM") . "</a></li>";
+	$html .= "<li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"?page=wpbdp_admin_formfields\">" . __("Setup/Manage Form Fields","WPBDM") . "</a></li>";
 	if(wpbdp_get_option('featured-on'))
 	{
 		$html .= "<li class=\"button\" $listyle><a style=\"text-decoration:none;\" href=\"" . admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=pendingupgrade', WPBDP_Plugin::POST_TYPE)) . "\">" . __("Featured Listings Pending Upgrade","WPBDM") . "</a></li>";

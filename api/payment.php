@@ -107,8 +107,15 @@ class WPBDP_FeesAPI {
         if (!isset($fee['images']) || !is_int($fee['images']) || intval($fee['images']) < 0)
             $errors[] = _x('Fee allowed images must be a non-negative integer.', 'fees-api', 'WPBDM');
 
-        if (!isset($fee['days']) || !is_int($fee['days']) || intval($fee['days']) < 0)
-            $errors[] = _x('Fee listing run must be a non-negative integer.', 'fees-api', 'WPBDM');        
+        if (!isset($fee['days']) || !is_int($fee['days']) || intval($fee['days']) < 0) {
+            $errors[] = _x('Fee listing run must be a non-negative integer.', 'fees-api', 'WPBDM');
+        } else {
+            // limit 'duration' because of TIMESTAMP limited range (issue #157).
+            // FIXME: this is not a long-term fix. we should move to DATETIME to avoid this entirely.
+            if ($fee['days'] > 3650) {
+                $errors[] = _x('Fee listing duration must be a number less than 10 years (3650 days).', 'fees-api', 'WPBDM');
+            }
+        }
 
         if ($errors)
             return false;
@@ -135,11 +142,14 @@ class WPBDP_FeesAPI {
         if ($fee['categories']['all'])
             $fee['categories']['categories'] = array();
 
+        if (!$fee['categories']['categories'])
+            $fee['categories']['all'] = true;
+
         // TODO delete unnecessary categories: if a parent of a category is in the list, remove the category
 
         $fee['categories'] = serialize($fee['categories']);
 
-        if ($this->is_valid_fee($fee, &$errors)) {
+        if ($this->is_valid_fee($fee, $errors)) {
             if (isset($fee['id'])) {
                 return $wpdb->update("{$wpdb->prefix}wpbdp_fees", $fee, array('id' => $fee['id'])) !== false;
             } else {

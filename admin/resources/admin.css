@@ -250,8 +250,15 @@ table.wp-list-table.formfields .tag.in-excerpt {
 
 #wpbdp-listing-fields div.listing-images .image {
     padding: 5px;
-    border-right: 1px solid #ddd;
+    /*border-right: 1px solid #ddd;*/
     width: 150px;
+    vertical-align: top;
+    /*float: left;*/
+    display: inline-block;
+    zoom: 1;
+    *display: inline;
+    min-height: 210px;
+    _height: 210px;
 }
 
 #wpbdp-listing-fields div.listing-images .image img {
@@ -262,3 +269,49 @@ table.wp-list-table.formfields .tag.in-excerpt {
 /* FIXME: some front-end styles */
 ul#wpbusdirmanerrors { margin-left:20px; }
 .wpbusdirmanerroralert { color:#ff0000;font-weight:bold;font-size:14px; }
+
+/* CSV import */
+.wpbdp-csv-import-example {
+    width: 100%;
+    padding: 10px;   
+    display: block;
+    background: #fff;
+    border: solid 1px #ddd;
+    font-size: 90%;
+    font-family: monospace;
+    height: 100%;
+    white-space: nowrap;
+}
+
+table.wpbdp-csv-import-results, table.wpbdp-csv-import-warnings {
+    width: 100%;
+}
+
+table.wpbdp-csv-import-results .line-no, table.wpbdp-csv-import-warnings .line-no {
+    width: 50px;
+}
+
+table.wpbdp-csv-import-results td.line, table.wpbdp-csv-import-warnings td.line {
+    font-family: monospace;
+    font-size: 90%;
+}
+
+table.wpbdp-csv-import-results .error, table.wpbdp-csv-import-warnings .error {
+    width: 200px;
+}
+
+table.wpbdp-csv-import-headers {
+    width: 100%;
+}
+
+table.wpbdp-csv-import-headers td.field-is-required, table.wpbdp-csv-import-headers td.field-is-multivalued {
+    text-align: center;
+}
+
+table.wpbdp-csv-import-headers tbody tr {
+    background: #f9f9f9;
+}
+
+table.wpbdp-csv-import-headers tbody tr.alt {
+    background: inherit;
+}

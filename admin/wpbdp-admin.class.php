@@ -2,6 +2,7 @@
 require_once(WPBDP_PATH . 'admin/admin-pages.php');
 require_once(WPBDP_PATH . 'admin/fees.php');
 require_once(WPBDP_PATH . 'admin/form-fields.php');
+require_once(WPBDP_PATH . 'admin/csv-import.php');
 
 if (!class_exists('WPBDP_Admin')) {
 
@@ -14,7 +15,7 @@ class WPBDP_Admin {
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'add_metaboxes'));
         add_action('admin_init', array($this, 'check_for_required_fields'));
-        add_action('delete_post', array($this, '_delete_post_metadata'));
+        add_action('before_delete_post', array($this, '_delete_post_metadata'));
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_notices', array($this, 'admin_notices'));
         add_action('admin_enqueue_scripts', array($this, 'admin_javascript'));
@@ -29,6 +30,8 @@ class WPBDP_Admin {
         add_filter('request', array($this, 'apply_query_filters'));
 
         add_action('save_post', array($this, '_save_post'));
+
+        add_filter('wp_terms_checklist_args', array($this, '_checklist_args')); // fix issue #152
 
         add_action('wp_ajax_wpbdp-uploadimage', array($this, '_upload_image'));
         add_action('wp_ajax_wpbdp-deleteimage', array($this, '_delete_image'));
@@ -63,13 +66,13 @@ class WPBDP_Admin {
                          _x('Manage Options', 'admin menu', 'WPBDM'),
                          _x('Manage Options', 'admin menu', 'WPBDM'),
                          'activate_plugins',
-                         'wpbdp_settings',
+                         'wpbdp_admin_settings',
                          array($this, 'admin_settings'));
         add_submenu_page('wpbusdirman.php',
                          _x('Manage Fees', 'admin menu', 'WPBDM'),
                          _x('Manage Fees', 'admin menu', 'WPBDM'),
                          'activate_plugins',
-                         'wpbdman_c2',
+                         'wpbdp_admin_fees',
                          array('WPBDP_FeesAdmin', 'admin_menu_cb'));
         add_submenu_page('wpbusdirman.php',
                          _x('Manage Form Fields', 'admin menu', 'WPBDM'),
@@ -89,6 +92,12 @@ class WPBDP_Admin {
                          'activate_plugins',
                          'wpbdman_c5',
                          '_placeholder_');
+        add_submenu_page('wpbusdirman.php',
+                         _x('CSV Import', 'admin menu', 'WPBDM'),
+                         _x('CSV Import', 'admin menu', 'WPBDM'),
+                         'activate_plugins',
+                         'wpbdp-csv-import',
+                         array('WPBDP_CSVImportAdmin', 'admin_menu_cb'));
         add_submenu_page('wpbusdirman.php',
                          _x('Uninstall WPDB Manager', 'admin menu', 'WPBDM'),
                          _x('Uninstall', 'admin menu', 'WPBDM'),
@@ -112,6 +121,16 @@ class WPBDP_Admin {
         if ( current_user_can('delete_posts') && get_post_type($post_id) == wpbdp_post_type() ) {
             $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_listing_fees WHERE listing_id = %d", $post_id));
             $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_payments WHERE listing_id = %d", $post_id));
+
+            $attachments = get_posts(array(
+                'numberposts' => -1,
+                'post_type' => 'attachment',
+                'post_parent' => $post_id
+            ));
+
+            foreach ($attachments as $attachment) {
+                wp_delete_attachment($attachment->ID, true);
+            }
         }
     }
 
@@ -160,6 +179,11 @@ class WPBDP_Admin {
                     remove_query_arg(array('message', 'wpbdmaction')));
     }
 
+    public function _checklist_args($args) {
+        $args['checked_ontop'] = false;
+        return $args;
+    }
+
     /*
      * Listing image handling
      */
@@ -191,16 +215,19 @@ class WPBDP_Admin {
                 echo '</div>';
             }
 
-                echo sprintf('<a id="upload-listing-image" href="%s" class="thickbox button-primary" title="%s">%s</a>',
-                             add_query_arg(array('action' => 'wpbdp-uploadimage',
-                                                 'post_id' => $post_id,
-                                                 'width' => '600',
-                                                 'TB_iframe' => 1),
-                                            admin_url('admin-ajax.php')),
-                             _x('Upload Image', 'admin', 'WPBDM'),
-                             _x('Upload Image', 'admin', 'WPBDM'));
-
             echo '</div>';
+
+            echo '<p style="clear: both; margin-top: 10px;">';
+            echo sprintf('<a id="upload-listing-image" href="%s" class="thickbox button-primary" title="%s">%s</a>',
+                         add_query_arg(array('action' => 'wpbdp-uploadimage',
+                                             'post_id' => $post_id,
+                                             'width' => '600',
+                                             'TB_iframe' => 1),
+                                        admin_url('admin-ajax.php')),
+                         _x('Upload Image', 'admin', 'WPBDM'),
+                         _x('Upload Image', 'admin', 'WPBDM'));
+            echo '</p>';
+
             echo '</div>';
         }
 
@@ -281,6 +308,8 @@ class WPBDP_Admin {
                             }
 
                             update_post_meta($post_id, '_wpbdp[fields][' . $field->id . ']', $value);
+                        } else {
+                            update_post_meta($post_id, '_wpbdp[fields][' . $field->id . ']', null);
                         }
                     }
                 }
@@ -496,8 +525,6 @@ class WPBDP_Admin {
                                         count($posts),
                                         'admin',
                                         'WPBDM');
-
-                $this->messages[] = __("The listing has been upgraded.","WPBDM");
                 break;
 
             case 'cancelfeatured':
@@ -533,7 +560,7 @@ class WPBDP_Admin {
                 break;
 
             case 'assignfee':
-                if ($listings_api->assign_fee($post_id, $_GET['category_id'], $_GET['fee_id']))
+                if ($listings_api->assign_fee($posts[0], $_GET['category_id'], $_GET['fee_id']))
                     $this->messages[] = _x('The fee was sucessfully assigned.', 'admin', 'WBPDM');
                 break;
 

@@ -177,6 +177,66 @@ function wpbdp_debug_e() {
 	call_user_func_array(array('WPBDP_Debugging', 'debug_e'), $args);
 }
 
+/**
+ * E-mail handling class.
+ * @since 2.1
+ */
+class WPBDP_Email {
+
+	public function __construct() {
+		$this->headers = array();
+
+		$this->subject = '';
+		$this->from = null;
+		$this->to = array();
+		$this->cc = array();
+
+		$this->body = '';
+		$this->plain = '';
+		$this->html = '';
+	}
+
+	private function prepare_html() {
+		if (!$this->html) {
+			$text = $this->body ? $this->body : $this->plain;
+			$text = str_ireplace(array("<br>", "<br/>", "<br />"), "\n", $text);
+			$this->html = nl2br($text);
+		}
+	}
+
+	private function prepare_plain() {
+		if (!$this->plain) {
+			$text = $this->body ? $this->body : $this->html;
+			$this->plain = strip_tags($text); // FIXME: this removes 'valid' plain text like <whatever>
+		}
+	}
+
+	/**
+	 * Sends the email.
+	 * @param string $format allowed values are 'html', 'plain' or 'both'
+	 * @return boolean true on success, false otherwise
+	 */
+	public function send($format='both') {
+		// TODO: implement 'plain' and 'both'
+		$this->prepare_html();
+		$this->prepare_plain();
+
+		$from = $this->from ? $this->from : sprintf('%s <%s>', get_option('blogname'), get_option('admin_email'));
+		$headers = array_merge(array(
+			'MIME-Version' => '1.0',
+			'Content-Type' => 'text/html; charset="' . get_option('blog_charset') . '"',
+			'From' => $from
+		), $this->headers);
+
+		$email_headers = '';
+		foreach ($headers as $k => $v) {
+			$email_headers .= sprintf("%s: %s\r\n", $k, $v);
+		}
+
+		return wp_mail($this->to, $this->subject, $this->html, $email_headers);
+	}
+
+}
 
 /*
  * Misc.
@@ -205,4 +265,42 @@ function wpbdp_render_page($template, $vars=array(), $echo_output=false) {
 		echo $html;
 
 	return $html;
+}
+
+function wpbdp_generate_password($length=6, $level=2) {
+   list($usec, $sec) = explode(' ', microtime());
+   srand((float) $sec + ((float) $usec * 100000));
+
+   $validchars[1] = "0123456789abcdfghjkmnpqrstvwxyz";
+   $validchars[2] = "0123456789abcdfghjkmnpqrstvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+   $validchars[3] = "0123456789_!@#$%&*()-=+/abcdfghjkmnpqrstvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_!@#$%&*()-=+/";
+
+   $password  = "";
+   $counter   = 0;
+
+   while ($counter < $length)
+   {
+	 $actChar = substr($validchars[$level], rand(0, strlen($validchars[$level])-1), 1);
+
+	 // All character must be different
+	 if (!strstr($password, $actChar))
+	 {
+		$password .= $actChar;
+		$counter++;
+	 }
+   }
+
+   return $password;
+}
+
+
+if(!function_exists('str_getcsv')) {
+    function str_getcsv($input, $delimiter = ",", $enclosure = '"', $escape = "\\") {
+        $fp = fopen("php://memory", 'r+');
+        fputs($fp, $input);
+        rewind($fp);
+        $data = fgetcsv($fp, null, $delimiter, $enclosure); // $escape only got added in 5.3.0
+        fclose($fp);
+        return $data;
+    }
 }
