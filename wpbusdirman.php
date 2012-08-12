@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.1
+Version: 2.1.1
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -175,7 +175,7 @@ require_once(WPBDP_PATH . 'widgets.php');
 
 class WPBDP_Plugin {
 
-    const VERSION = '2.1';
+    const VERSION = '2.1.1';
     const DB_VERSION = '3.0';
 
     const POST_TYPE = 'wpbdm-directory';
@@ -309,23 +309,32 @@ class WPBDP_Plugin {
     }
 
     public function _query_vars($vars) {
+        // workaround WP issue #16373
+        if (wpbdp_get_page_id('main') == get_option('page_on_front'))
+            return $vars;
+
         array_push($vars, 'id');
         array_push($vars, 'listing');
         array_push($vars, 'category_id');
         array_push($vars, 'category');
         array_push($vars, 'action');
+
         return $vars;
     }
 
     public function _template_redirect() {
         global $wp_query;
 
+        // workaround WP issue #16373
+        if (wpbdp_get_page_id('main') == get_option('page_on_front'))
+            return;
+
         if ( (get_query_var('taxonomy') == self::POST_TYPE_CATEGORY) && (_wpbdp_template_mode('category') == 'page') ) {
             wp_redirect( add_query_arg('category', get_query_var('term'), wpbdp_get_page_link('main')) ); // XXX
             exit;
         }
 
-        if ( (get_query_var('post_type') == self::POST_TYPE) && (_wpbdp_template_mode('single') == 'page') ) {
+        if ( is_single() && (get_query_var('post_type') == self::POST_TYPE) && (_wpbdp_template_mode('single') == 'page') ) {
             wp_redirect( add_query_arg('listing', get_query_var('name'), wpbdp_get_page_link('main')) ); // XXX
             exit;
         }
@@ -821,7 +830,7 @@ class WPBDP_Plugin {
         wp_enqueue_script('wpbdp-js', WPBDP_URL . 'resources/js/wpbdp.js', array('jquery'));
 
         // enable legacy css (should be removed in a future release) XXX
-        if (_wpbdp_template_mode('single') == 'template' || _wpbdp_template_mode('category') == 'template')
+        if (_wpbdp_template_mode('single') == 'template' || _wpbdp_template_mode('category') == 'template' ||  wpbdp_get_page_id('main') == get_option('page_on_front') )
             wp_enqueue_style('wpbdp-legacy-css', WPBDP_URL . '/resources/css/wpbdp-legacy.css');
 
         if (file_exists(WP_PLUGIN_DIR . '/wpbdp.css'))

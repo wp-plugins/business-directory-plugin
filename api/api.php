@@ -32,11 +32,11 @@ function wpbdp_get_page_id($name='main') {
     global $wpdb;
 
     static $shortcodes = array(
-        'main' => 'WPBUSDIRMANUI',
-        'showlisting' => 'WPBUSDIRMANUI',
-        'add-listing' => 'WPBUSDIRMANADDLISTING',
-        'manage-listings' => 'WPBUSDIRMANMANAGELISTING',
-        'view-listings' => 'WPBUSDIRMANMVIEWLISTINGS',
+        'main' => array('businessdirectory', 'WPBUSDIRMANUI'),
+        'showlisting' => array('businessdirectory', 'WPBUSDIRMANUI'),
+        'add-listing' => array('businessdirectory-submitlisting', 'WPBUSDIRMANADDLISTING'),
+        'manage-listings' => array('businessdirectory-managelistings', 'WPBUSDIRMANMANAGELISTING'),
+        'view-listings' => array('businessdirectory-viewlistings', 'businessdirectory-listings', 'WPBUSDIRMANMVIEWLISTINGS'),
         'paypal' => 'WPBUSDIRMANPAYPAL',
         '2checkout' => 'WPBUSDIRMANTWOCHECKOUT',
         'googlecheckout' => 'WPBUSDIRMANGOOGLECHECKOUT'
@@ -45,12 +45,22 @@ function wpbdp_get_page_id($name='main') {
     if (!array_key_exists($name, $shortcodes))
         return null;
 
-    return $wpdb->get_var(sprintf("SELECT ID FROM {$wpdb->posts} WHERE post_content LIKE '%%[%s]%%' AND post_status = 'publish' AND post_type = 'page'", $shortcodes[$name]));
+    $where = '1=0';
+    $options = is_string($shortcodes[$name]) ? array($shortcodes[$name]) : $shortcodes[$name];
+    foreach ($options as $shortcode) {
+        $where .= sprintf(" OR post_content LIKE '%%[%s]%%'", $shortcode);
+    }
+
+    $id = $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE {$where} AND post_status = 'publish' AND post_type = 'page' LIMIT 1");
+    return $id;
 }
 
 function wpbdp_get_page_link($name='main', $arg0=null) {
     $main_page_id = wpbdp_get_page_id('main');
     $page_id = wpbdp_get_page_id($name);
+
+    // wpbdp_debug_e(get_option('page_on_front'), $page_id);
+    // wpbdp_debug_e($main_page_id);
 
     if ($page_id)
         return get_permalink($page_id);
@@ -67,6 +77,8 @@ function wpbdp_get_page_link($name='main', $arg0=null) {
 
     if ($name == 'add-listing')
         return add_query_arg('action', 'submitlisting', get_permalink($main_page_id));
+
+    return get_permalink($main_page_id);
 }
 
 /* Admin API */
@@ -494,23 +506,28 @@ function _wpbdp_render_excerpt() {
     $sticky_status = wpbdp_listings_api()->get_sticky_status($post->ID);
 
     $html = '';
-
     $html .= sprintf('<div id="wpbdp-listing-%d" class="wpbdp-listing excerpt wpbdp-listing-excerpt %s %s cf">',
                      $post->ID,
                      $sticky_status,
                      ($counter & 1) ? 'odd':  'even');
     //$html .= apply_filters('wpbdp_render_listing_before', '', $post->ID, 'excerpt');
 
-    $html .= wpbusdirman_display_the_thumbnail();
-
-    $html .= '<div class="listing-details">';
+    $listing_fields = '';
     foreach (wpbdp_get_formfields() as $field) {
         if (!$field->display_options['show_in_excerpt'])
             continue;
 
-        $html .= wpbdp_format_field_output($field, null, $post);
+        $listing_fields .= wpbdp_format_field_output($field, null, $post);
     }
-    $html .= '</div>';
+
+    $vars = array(
+        'is_sticky' => $sticky_status == 'sticky',
+        'thumbnail' => wpbusdirman_display_the_thumbnail(),
+        'title' => get_the_title(),
+        'listing_fields' => $listing_fields
+    );
+
+    $html .= wpbdp_render('businessdirectory-excerpt', $vars, true);
     $html .= wpbdp_render('parts/listing-buttons', array('listing_id' => $post->ID, 'view' => 'excerpt'), false);
 
     //$html .= apply_filters('wpbdp_render_listing_after', '', $post->ID, 'excerpt');
