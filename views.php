@@ -25,6 +25,7 @@ class WPBDP_DirectoryController {
             $action = get_query_var('action');
 
         if (get_query_var('category_id') || get_query_var('category')) $action = 'browsecategory';
+        if (get_query_var('tag')) $action = 'browsetag';
         if (get_query_var('id') || get_query_var('listing')) $action = 'showlisting';
 
         if (!$action) $action = 'main';
@@ -65,6 +66,9 @@ class WPBDP_DirectoryController {
             case 'browsecategory':
                 return $this->browse_category();
                 break;
+            case 'browsetag':
+                return $this->browse_tag();
+                break;
             case 'editlisting':
             case 'submitlisting':
                 return $this->submit_listing();
@@ -99,7 +103,7 @@ class WPBDP_DirectoryController {
     /* Show listing. */
     public function show_listing() {
         if (get_query_var('listing') || isset($_GET['listing'])) {
-            if ($posts = get_posts(array('numberposts' => 1, 'post_type' => wpbdp_post_type(), 'name' => get_query_var('listing') ? get_query_var('listing') : wpbdp_getv($_GET, 'listing', null) ) )) {
+            if ($posts = get_posts(array('post_status' => 'publish', 'numberposts' => 1, 'post_type' => wpbdp_post_type(), 'name' => get_query_var('listing') ? get_query_var('listing') : wpbdp_getv($_GET, 'listing', null) ) )) {
                 $listing_id = $posts[0]->ID;
             } else {
                 $listing_id = null;
@@ -153,6 +157,44 @@ class WPBDP_DirectoryController {
 
         return $html;
     }
+
+    /* Display category. */
+    public function browse_tag() {
+        $tag = get_term_by('slug', get_query_var('tag'), wpbdp_tags_taxonomy());
+        $tag_id = $tag->term_id;
+
+        $listings_api = wpbdp_listings_api();
+
+        // exclude expired posts in this category (and stickies)
+        // $excluded_ids = array_merge($listings_api->get_expired_listings($category_id), $listings_api->get_stickies());
+        // $stickies = wpbdp_sticky_loop($category_id);
+        $excluded_ids = array();
+
+        query_posts(array(
+            'post_type' => wpbdp_post_type(),
+            'post_status' => 'publish',
+            'posts_per_page' => 0,
+            'post__not_in' => $excluded_ids,
+            'paged' => get_query_var('paged') ? get_query_var('paged') : 1,
+            'orderby' => wpbdp_get_option('listings-order-by', 'date'),
+            'order' => wpbdp_get_option('listings-sort', 'ASC'),
+            'tax_query' => array(
+                array('taxonomy' => wpbdp_tags_taxonomy(),
+                      'field' => 'id',
+                      'terms' => $tag_id)
+            )
+        ));
+
+        $html = wpbdp_render('category',
+                             array('category' => get_term($tag_id, wpbdp_tags_taxonomy()),
+                                   'stickies' => $stickies
+                                ),
+                             false);
+
+        wp_reset_query();
+
+        return $html;
+    }    
 
     /* display listings */
     public function view_listings($include_buttons=false) {
@@ -271,7 +313,7 @@ class WPBDP_DirectoryController {
         if (wpbdp_get_option('show-listings-under-categories'))
             $listings = $this->view_listings(false);
 
-        $html .= wpbdp_render(array('businessdirectory-main-page-categories', 'wpbusdirman-index-categories'),
+        $html .= wpbdp_render(array('businessdirectory-main-page', 'wpbusdirman-index-categories'),
                                array(
                                 'submit_listing_button' => wpbusdirman_post_menu_button_submitlisting(),
                                 'view_listings_button' => wpbusdirman_post_menu_button_viewlistings(),
@@ -324,8 +366,12 @@ class WPBDP_DirectoryController {
             if ( (get_post($listing_id)->post_author != $current_user->ID) && (!current_user_can('administrator')) )
                 return wpbdp_render_msg(_x('You are not authorized to edit this listing.', 'templates', 'WPBDM'), 'error');
 
-            if (wpbdp_payment_status($listing_id) != 'paid')
-                return wpbdp_render_msg(_x('You can not edit your listing until its payment has been cleared.', 'templates', 'WPBDM'), 'error');
+            if (wpbdp_payment_status($listing_id) != 'paid' && !current_user_can('administrator')) {
+                $html  = '';
+                $html .= wpbdp_render_msg(_x('You can not edit your listing until its payment has been cleared.', 'templates', 'WPBDM'), 'error');
+                $html .= sprintf('<a href="%s">%s</a>', get_permalink($this->_listing_data['listing_id']), _x('Return to listing.', 'templates', 'WPBDM'));
+                return $html;                
+            }
         }
 
         $html = '';
@@ -336,6 +382,8 @@ class WPBDP_DirectoryController {
     }
 
     public function submit_listing_fields() {
+        unset($_SESSION['wpbdp-submitted-listing-id']);
+
         $formfields_api = wpbdp_formfields_api();
 
         $post_values = isset($_POST['listingfields']) ? $_POST['listingfields'] : array();
@@ -378,16 +426,36 @@ class WPBDP_DirectoryController {
                               'value' => $field_value,
                               'html' => $formfields_api->render($field, $field_value));
         }
+        if (wpbdp_get_option('recaptcha-for-submits')) {
+            if ($private_key = wpbdp_get_option('recaptcha-private-key')) {
+                if (isset($_POST['recaptcha_challenge_field'])) {
+                    require_once(WPBDP_PATH . 'recaptcha/recaptchalib.php');
+
+                    $resp = recaptcha_check_answer($private_key, $_SERVER['REMOTE_ADDR'], $_POST['recaptcha_challenge_field'], $_POST['recaptcha_response_field']);
+                    if (!$resp->is_valid)
+                        $validation_errors[] = _x("The reCAPTCHA wasn't entered correctly.", 'templates', 'WPBDM');
+                }
+            }
+        }
 
         // if there are values POSTed and everything validates, move on
         if ($post_values && !$validation_errors) {
             return $this->submit_listing_payment();
         }
+
+        $recaptcha = null;
+        if (wpbdp_get_option('recaptcha-for-submits')) {
+            if ($public_key = wpbdp_get_option('recaptcha-public-key')) {
+                require_once(WPBDP_PATH . 'recaptcha/recaptchalib.php');
+                $recaptcha = recaptcha_get_html($public_key);
+            }
+        }        
         
         return wpbdp_render('listing-form-fields', array(
                             'validation_errors' => $validation_errors,
                             'listing_id' => $this->_listing_data['listing_id'],
                             'fields' => $fields,
+                            'recaptcha' => $recaptcha
                             ), false);      
     }
 
@@ -627,11 +695,22 @@ class WPBDP_DirectoryController {
 
         $data = $this->_listing_data;
 
+        if (isset($_SESSION['wpbdp-submitted-listing-id']) && $_SESSION['wpbdp-submitted-listing-id'] > 0) {
+            $listing_id = $_SESSION['wpbdp-submitted-listing-id'];
+
+            return wpbdp_render('listing-form-done', array(
+                'listing_data' => $this->_listing_data,
+                'listing' => get_post($listing_id)
+            ), false);
+        }
+
         $transaction_id = null;
         if ($listing_id = $this->listings->add_listing($data, $transaction_id)) {
+            $_SESSION['wpbdp-submitted-listing-id'] = $listing_id;
+
             $cost = $this->listings->cost_of_listing($listing_id, true);
 
-            if ($cost > 0.0) {
+            if (!current_user_can('administrator') && ($cost > 0.0)) {
                 $payments_api = wpbdp_payments_api();
                 $payment_page = $payments_api->render_payment_page(array(
                     'title' => _x('Step 4 - Checkout', 'templates', 'WPBDM'),
@@ -676,7 +755,7 @@ class WPBDP_DirectoryController {
                 'author' => $current_user->ID,
                 'post_type' => wpbdp_post_type(),
                 'post_status' => 'publish',
-                'posts_per_page' => -1
+                'paged' => get_query_var('paged') ? get_query_var('paged') : 1
             ));
         }
 
@@ -711,13 +790,17 @@ class WPBDP_DirectoryController {
             return;
 
         if ($listing_id = wpbdp_getv($_REQUEST, 'listing_id')) {
-            if (get_post($listing_id)->post_author != wp_get_current_user()->id)
+            if ( (get_post($listing_id)->post_author != wp_get_current_user()->id) && !current_user_can('administrator'))
                 return '';
 
             $listings_api = wpbdp_listings_api();
             
-            if ($listings_api->get_payment_status($listing_id) != 'paid')
-                return wpbdp_render_msg(_x('You can not upgrade your listing until its payment has been cleared.', 'templates', 'WPBDM'));
+            if ($listings_api->get_payment_status($listing_id) != 'paid' && !current_user_can('administrator')) {
+                $html  = '';
+                $html .= wpbdp_render_msg(_x('You can not upgrade your listing until its payment has been cleared.', 'templates', 'WPBDM'));
+                $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+                return $html;
+            }
 
             $action = '';
             if (isset($_POST['do_upgrade']))
@@ -731,6 +814,20 @@ class WPBDP_DirectoryController {
                     $transaction_id = null;
                     $listings_api->request_listing_upgrade($listing_id, $transaction_id);
 
+                    if (current_user_can('administrator')) {
+                        // auto-approve transaction if we are admins
+                        $transaction = $payments_api->get_transaction($transaction_id);
+                        $transaction->status = 'approved';
+                        $transaction->processed_by = 'admin';
+                        $transaction->processed_on = date('Y-m-d H:i:s', time());
+                        $payments_api->save_transaction($transaction);
+
+                        $html  = '';
+                        $html .= wpbdp_render_msg(_x('Listing is now featured.', 'templates', 'WPBDM'));
+                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+                        return $html;
+                    }
+
                     return $payments_api->render_payment_page(array(
                         'title' => _x('Upgrade listing', 'templates', 'WPBDM'),
                         'transaction_id' => $transaction_id,
@@ -741,33 +838,25 @@ class WPBDP_DirectoryController {
                 default:
                     $sticky_status = $listings_api->get_sticky_status($listing_id);
 
-                    if ($sticky_status == 'sticky')
-                        return wpbdp_render_msg(_x('Your listing is already featured.', 'templates', 'WPBDM')); 
-                    elseif ($sticky_status == 'pending')
-                        return wpbdp_render_msg(_x('Your listing is already pending approval for "featured" status.', 'templates', 'WPBDM'));
-                    else
+                    if ($sticky_status == 'sticky') {
+                        $html  = '';
+                        $html .= wpbdp_render_msg(_x('Your listing is already featured.', 'templates', 'WPBDM')); 
+                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));                        
+                        return $html;
+                    } elseif ($sticky_status == 'pending') {
+                        $html  = '';
+                        $html .= wpbdp_render_msg(_x('Your listing is already pending approval for "featured" status.', 'templates', 'WPBDM'));
+                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+                        return $html;                        
+                    } else {
                         return wpbdp_render('listing-upgradetosticky', array(
                             'listing' => get_post($listing_id),
                         ), false);                      
+                    }
 
                     break;
             }
-            
-            $sticky_status = $listings_api->get_sticky_status($listing_id);
 
-            switch ($sticky_status) {
-                case 'sticky':
-                    return wpbdp_render_msg(_x('Your listing is already featured.', 'templates', 'WPBDM'));
-                    break;
-                case 'pending':
-                    return wpbdp_render_msg('listing is pending approval');
-                    break;
-                default:
-                    return wpbdp_render('listing-upgradetosticky', array(
-                        'listing' => get_post($listing_id)
-                    ), false);
-                    break;
-            }
         }
     }
 
@@ -856,12 +945,12 @@ class WPBDP_DirectoryController {
         $listings_api = wpbdp_listings_api();
 
         $results = array();
-        if ($_POST) {
+        if (isset($_GET['dosrch'])) {
             $search_args = array();
-            $search_args['q'] = wpbdp_getv($_POST, 'q', null);
+            $search_args['q'] = wpbdp_getv($_GET, 'q', null);
             $search_args['meta'] = array();
 
-            foreach (wpbdp_getv($_POST, 'meta', array()) as $field_id => $field_search) {
+            foreach (wpbdp_getv($_GET, '_m', array()) as $field_id => $field_search) {
                 $search_args['meta'][] = array('field_id' => $field_id,
                                                'q' => wpbdp_getv($field_search, 'q', null),
                                                'options' => wpbdp_getv($field_search, 'options', array())
@@ -873,13 +962,17 @@ class WPBDP_DirectoryController {
 
         $fields = array();
         foreach ($fields_api->getFieldsByAssociation('meta') as $field) {
-            if (!$field->display_options['hide_field']) $fields[] = $field;
+            if ( ($field->display_options['show_in_listing'] || $field->display_options['show_in_excerpt']) &&
+                 ($field->validator != 'EmailValidator') ) {
+                $fields[] = $field;
+            }
         }
 
         query_posts(array('post_type' => wpbdp_post_type(),
-                          'posts_per_page' => -1,
+                          'posts_per_page' => 10,
+                          'paged' => get_query_var('paged') ? get_query_var('paged') : 1,
                           'post__in' => $results ? $results : array(0)));
-        $html = wpbdp_render('search', array('fields' => $fields, 'searching' => $_POST ? true : false), false);
+        $html = wpbdp_render('search', array('fields' => $fields, 'searching' => isset($_GET['dosrch']) ? true : false), false);
         wp_reset_query();
 
         return $html;

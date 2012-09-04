@@ -32,8 +32,8 @@ function wpbdp_get_page_id($name='main') {
     global $wpdb;
 
     static $shortcodes = array(
-        'main' => array('businessdirectory', 'WPBUSDIRMANUI'),
-        'showlisting' => array('businessdirectory', 'WPBUSDIRMANUI'),
+        'main' => array('businessdirectory', 'business-directory', 'WPBUSDIRMANUI'),
+        'showlisting' => array('businessdirectory', 'business-directory', 'WPBUSDIRMANUI'),
         'add-listing' => array('businessdirectory-submitlisting', 'WPBUSDIRMANADDLISTING'),
         'manage-listings' => array('businessdirectory-managelistings', 'WPBUSDIRMANMANAGELISTING'),
         'view-listings' => array('businessdirectory-viewlistings', 'businessdirectory-listings', 'WPBUSDIRMANMVIEWLISTINGS'),
@@ -216,7 +216,7 @@ function wpbdp_format_field_output($field, $value='', $listing=null) {
     if ($field->validator == 'EmailValidator' && !wpbdp_get_option('override-email-blocking'))
         return '';
 
-    if ($field && $value && !$field->display_options['hide_field'])
+    if ( $field && $value && ($field->display_options['show_in_excerpt'] || $field->display_options['show_in_listing']) )
         return sprintf('<div class="field-value wpbdp-field-%s %s"><label>%s</label>: <span class="value">%s</span></div>',
                        strtolower(str_replace(array(' ', '/'), '', $field->label)), /* normalized field label */
                        $field->association,
@@ -359,7 +359,8 @@ function wpbdp_render_msg($msg, $type='status') {
  * Template functions
  */
 
-function wpbdp_sticky_loop($category_id=null) {
+function wpbdp_sticky_loop($category_id=null, $taxonomy=null) {
+    $taxonomy = !$taxonomy ? wpbdp_categories_taxonomy() : $taxonomy;
     $category_id = $category_id ? $category_id : (isset($_REQUEST['category_id']) ? intval($_REQUEST['category_id']) : null);
 
     $args = array(
@@ -375,7 +376,7 @@ function wpbdp_sticky_loop($category_id=null) {
 
     if ($category_id) {
         $args['tax_query'] = array(
-            array('taxonomy' => wpbdp_categories_taxonomy(),
+            array('taxonomy' => $taxonomy,
                   'field' => 'id',
                   'terms' => $category_id)
         );
@@ -406,14 +407,16 @@ function wpbdp_render_listing($listing_id=null, $view='single', $echo=false) {
     if ($listing_id)  {
         query_posts(array(
             'post_type' => wpbdp_post_type(),
+            'post_status' => 'publish',
             'p' => $listing_id
         ));
 
         if (have_posts()) the_post();
     }
 
-    if (!$post || $post->post_type != wpbdp_post_type())
+    if (!$post || $post->post_type != wpbdp_post_type()) {
         return '';
+    }
 
     if ($view == 'excerpt')
         $html = _wpbdp_render_excerpt();
@@ -448,7 +451,8 @@ function _wpbdp_render_single() {
 
     $listing_fields = '';
     foreach (wpbdp_get_formfields() as $field) {
-        $listing_fields .= wpbdp_format_field_output($field, null, $post);
+        if ($field->display_options['show_in_listing'])
+            $listing_fields .= wpbdp_format_field_output($field, null, $post);
     }
 
     // images
@@ -476,7 +480,7 @@ function _wpbdp_render_single() {
         'extra_images' => $extra_images
     );
 
-    $html .= wpbdp_render('businessdirectory-listing', $vars, false);
+    $html .= wpbdp_render('businessdirectory-listing', $vars, true);
     $html .= apply_filters('wpbdp_listing_view_after', '', $post->ID, 'single');
 
     $html .= '<div class="contact-form">';

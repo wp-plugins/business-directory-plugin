@@ -6,6 +6,7 @@ class WPBDP_ListingsAPI {
     public function __construct() {
         add_filter('post_type_link', array($this, '_post_link'), 10, 2);
         add_filter('term_link', array($this, '_category_link'), 10, 3);
+        add_filter('term_link', array($this, '_tag_link'), 10, 3);
         add_filter('comments_open', array($this, '_allow_comments'), 10, 2);
     }
 
@@ -23,6 +24,22 @@ class WPBDP_ListingsAPI {
         }
 
         return $link;
+    }
+
+    public function _tag_link($link, $tag, $taxonomy) {
+        // workaround WP issue #16373
+        if (wpbdp_get_page_id('main') == get_option('page_on_front'))
+            return $link;
+
+        if ( ($taxonomy == wpbdp_tags_taxonomy()) && (_wpbdp_template_mode('category') == 'page') ) {
+            if (wpbdp_rewrite_on()) {
+                return rtrim(wpbdp_get_page_link('main'), '/') . '/' . wpbdp_get_option('permalinks-tags-slug') . '/' . $tag->slug . '/';
+            } else {
+                return add_query_arg('tag', $tag->slug, wpbdp_get_page_link('main')); // XXX
+            }
+        }
+
+        return $link;                
     }
 
     public function _post_link($url, $post) {
@@ -45,6 +62,11 @@ class WPBDP_ListingsAPI {
     }
 
     public function _allow_comments($open, $post_id) {
+        // comments on directory pages
+        if ($post_id == wpbdp_get_page_id('main'))
+            return false;
+
+        // comments on listings
         if (get_post_type($post_id) == wpbdp_post_type())
             return wpbdp_get_option('show-comment-form');
         
@@ -449,7 +471,7 @@ class WPBDP_ListingsAPI {
             'payment_type' => !$editing ? 'initial' : 'edit',
             'listing_id' => $listing_id
         ));
-        update_post_meta($listing_id, '_wpbdp[payment_status]', $cost > 0.0 ? 'not-paid' : 'paid');
+        update_post_meta($listing_id, '_wpbdp[payment_status]', !current_user_can('administrator') && ($cost > 0.0) ? 'not-paid' : 'paid');
 
         return $listing_id;
     }
@@ -479,7 +501,7 @@ class WPBDP_ListingsAPI {
         if (isset($args['meta'])) {
             foreach ($args['meta'] as $i => $meta_search) {
                 if ($field = wpbdp_get_formfield($meta_search['field_id'])) {
-                    if ($field->display_options['hide_field']) continue;
+                    if (!$field->display_options['show_in_excerpt'] && !$field->display_options['show_in_listing']) continue;
 
                     if (in_array($field->type, array('checkbox', 'multiselect'))) {
                         // multi-valued field

@@ -20,7 +20,7 @@
 
     <?php if (wpbdp_user_can('delete', $listing_id)): ?>
     <form action="<?php echo wpbdp_get_page_link('deletelisting', $listing_id); ?>" method="POST">
-        <input type="submit" name="" value="<?php _ex('Delete', 'templates', 'WPBDM'); ?>" class="delete-listing" />
+        <input type="submit" name="" value="<?php _ex('Delete', 'templates', 'WPBDM'); ?>" class="delete-listing" data-confirmation-message="<?php _ex('Are you sure you wish to delete this listing?', 'templates', 'WPBDM'); ?>" />
     </form>    
 <!--    <a href="<?php echo wpbdp_get_page_link('deletelisting', $listing_id); ?>" class="delete-listing">
         <?php _ex('Delete', 'templates', 'WPBDM'); ?>
@@ -28,8 +28,7 @@
     <?php endif; ?>
 <?php elseif ($view == 'excerpt'): ?>
     <?php if (wpbdp_user_can('view', $listing_id)): ?>
-    <input type="button" value="<?php _ex('View', 'templates', 'WPBDM'); ?>" class="view-listing"
-           onclick="window.location.href = '<?php the_permalink(); ?>' " />
+    <input type="button" value="<?php _ex('View', 'templates', 'WPBDM'); ?>" class="view-listing" onclick="window.location.href = '<?php the_permalink(); ?>' " />
 
     <!--<a href="<?php the_permalink(); ?>" class="view-listing">
         <?php _ex('View', 'templates', 'WPBDM'); ?>
@@ -47,7 +46,7 @@
 
     <?php if (wpbdp_user_can('delete', $listing_id)): ?>
     <form action="<?php echo wpbdp_get_page_link('deletelisting', $listing_id); ?>" method="POST">
-        <input type="submit" name="" value="<?php _ex('Delete', 'templates', 'WPBDM'); ?>" class="delete-listing" />
+        <input type="submit" name="" value="<?php _ex('Delete', 'templates', 'WPBDM'); ?>" class="delete-listing" data-confirmation-message="<?php _ex('Are you sure you wish to delete this listing?', 'templates', 'WPBDM'); ?>" />
     </form>        
     <!--<a href="<?php echo wpbdp_get_page_link('deletelisting', $listing_id); ?>" class="delete-listing">
         <?php _ex('Delete', 'templates', 'WPBDM'); ?>
