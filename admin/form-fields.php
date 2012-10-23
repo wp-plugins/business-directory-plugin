@@ -164,12 +164,15 @@ class WPBDP_FormFieldsAdmin {
 
         wpbdp_render_page(WPBDP_PATH . 'admin/templates/form-fields.tpl.php',
                           array('table' => $table),
-                          true);    		    	
+                          true);
     }
 
 	private function processFieldForm() {
 		if (isset($_POST['field'])) {
 			$newfield = $_POST['field'];
+
+            if (!isset($newfield['display_options']))
+                $newfield['display_options'] = array('show_in_excerpt' => 0, 'show_in_listing' => 0, 'show_in_search' => 0);
 
 			if ($this->api->addorUpdateField($newfield, $errors)) {
 				$this->admin->messages[] = _x('Form fields updated.', 'form-fields admin', 'WPBDM');

@@ -191,14 +191,26 @@ function wpbdp_get_listing_field_html_value($listing, $field) {
                 if ($value) {
                     if (in_array($field->type, array('multiselect', 'checkbox'))) {
                         return esc_attr(str_replace("\t", ', ', $value));
+                    } elseif ($field->type == 'textarea') {
+                        return wpautop(wp_kses($value), true);
                     } else {
-                        if ($field->validator == 'URLValidator')
-                            return sprintf('<a href="%s" rel="no follow" target="%s">%s</a>',
-                                           esc_url($value),
-                                           isset($field->field_data['open_in_new_window']) && $field->field_data['open_in_new_window'] ? '_blank' : '_self',
-                                           esc_url($value));
+                        if ($field->validator == 'URLValidator') {
+                            if (is_array($value)) {
+                                $value_url = $value[0];
+                                $value_text = $value[1];
+                            } else {
+                                $value_url = $value;
+                                $value_text = $value;
+                            }
 
-                        return esc_attr(wpbdp_get_listing_field_value($listing, $field));
+                            return sprintf('<a href="%s" rel="no follow" target="%s" title="%s">%s</a>',
+                                           esc_url($value_url),
+                                           isset($field->field_data['open_in_new_window']) && $field->field_data['open_in_new_window'] ? '_blank' : '_self',
+                                           esc_attr($value_text),
+                                           esc_attr($value_text));
+                        }
+
+                        return wp_kses($value);
                     }
                 }
 
@@ -217,7 +229,7 @@ function wpbdp_format_field_output($field, $value='', $listing=null) {
         return '';
 
     if ( $field && $value && ($field->display_options['show_in_excerpt'] || $field->display_options['show_in_listing']) )
-        return sprintf('<div class="field-value wpbdp-field-%s %s"><label>%s</label>: <span class="value">%s</span></div>',
+        return sprintf('<div class="field-value wpbdp-field-%s %s"><label>%s:</label> <span class="value">%s</span></div>',
                        strtolower(str_replace(array(' ', '/'), '', $field->label)), /* normalized field label */
                        $field->association,
                        esc_attr($field->label),
@@ -350,7 +362,7 @@ function wpbdp_render($template, $vars=array(), $allow_override=true) {
 
 function wpbdp_render_msg($msg, $type='status') {
     $html = '';
-    $html .= sprintf('<div class="%s">%s</div>', $type == 'error' ? 'wpbusdirmanerroralert' : $type, $msg);
+    $html .= sprintf('<div class="wpbdp-msg %s">%s</div>', $type, $msg);
     return $html;
 }
 
@@ -431,8 +443,12 @@ function _wpbdp_render_single() {
     foreach ($images as $img) {
         if ($img->ID == $thumbnail_id) continue;
 
-        $extra_images[] = sprintf('<a class="thickbox" href="%s"><img class="wpbdp-thumbnail" src="%s" alt="%s" title="%s" border="0" /></a>',
-                                    wp_get_attachment_url($img->ID),
+        $medium_img = image_downsize($img->ID, 'medium');
+        $medium_url = $medium_img[0];
+
+        $extra_images[] = sprintf('<a href="%s" class="thickbox lightbox" rel="lightbox"><img class="wpbdp-thumbnail size-thumbnail " src="%s" alt="%s" title="%s" border="0" /></a>',
+                                    /*wp_get_attachment_url($img->ID),*/
+                                    $medium_url,
                                     wp_get_attachment_thumb_url($img->ID),
                                     the_title(null, null, false),
                                     the_title(null, null, false));
@@ -587,4 +603,35 @@ function wpbdp_user_can($action, $listing_id=null, $user_id=null) {
 
 function _wpbdp_current_action() {
     return wpbdp()->controller->get_current_action();
+}
+
+function wpbdp_get_post_by_slug($slug, $post_type=null) {
+    $post_type = $post_type ? $post_type : wpbdp_post_type();
+
+    $posts = get_posts(array(
+        'name' => $slug,
+        'post_type' => $post_type,
+        'post_status' => 'publish',
+        'numberposts' => 1
+    ));
+
+    if ($posts)
+        return $posts[0];
+    else
+        return 0;
+}
+
+function wpbdp_get_current_sort_option() {
+    if ($sort = trim(wpbdp_getv($_GET, 'wpbdp_sort', null))) {
+        $order = substr($sort, 0, 1) == '-' ? 'DESC' : 'ASC';
+        $sort = ltrim($sort, '-');
+
+        $obj = new StdClass();
+        $obj->option = $sort;
+        $obj->order = $order;
+
+        return $obj;
+    }
+
+    return null;
 }

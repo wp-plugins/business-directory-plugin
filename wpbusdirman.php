@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.1.4.1
+Version: 2.1.5
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -175,7 +175,7 @@ require_once(WPBDP_PATH . 'widgets.php');
 
 class WPBDP_Plugin {
 
-    const VERSION = '2.1.4';
+    const VERSION = '2.1.5';
     const DB_VERSION = '3.1';
 
     const POST_TYPE = 'wpbdp_listing';
@@ -273,7 +273,9 @@ class WPBDP_Plugin {
         if (!is_admin() && isset($query->query_vars['post_type']) && $query->query_vars['post_type'] == self::POST_TYPE) {
             $is_sticky_query = $wpdb->prepare("(SELECT 1 FROM {$wpdb->postmeta} WHERE {$wpdb->postmeta}.post_id = {$wpdb->posts}.ID AND {$wpdb->postmeta}.meta_key = %s AND {$wpdb->postmeta}.meta_value = %s) AS wpbdp_is_sticky",
                                                '_wpbdp[sticky]', 'sticky');
-            return $fields . ', ' . $is_sticky_query;
+
+            $fields = $fields . ', ' . $is_sticky_query;
+            $fields = apply_filters('wpbdp_query_fields', $fields);
         }
 
         return $fields;
@@ -281,7 +283,8 @@ class WPBDP_Plugin {
 
     public function _posts_orderby($orderby, $query) {
         if (!is_admin() && isset($query->query_vars['post_type']) && $query->query_vars['post_type'] == self::POST_TYPE) {
-            return 'wpbdp_is_sticky DESC, ' . $orderby;
+            $wpbdp_orderby = apply_filters('wpbdp_query_orderby', '');
+            $orderby = 'wpbdp_is_sticky DESC' . $wpbdp_orderby . ', ' . $orderby;
         }
 
         return $orderby;
@@ -382,6 +385,10 @@ class WPBDP_Plugin {
         
     }
 
+    public function _plugin_initialization() {
+        $this->_config['main_page'] = wpbdp_get_page_id('main');
+    }
+
     public function plugin_activation() {
         add_action('init', array($this, 'flush_rules'), 11);
     }
@@ -396,11 +403,15 @@ class WPBDP_Plugin {
     }
 
     public function init() {
+        if (get_option('wpbdp-debug-on', false)) $this->debug_on();
+
         $this->settings = new WPBDP_Settings();
         $this->formfields = new WPBDP_FormFieldsAPI();
         $this->fees = new WPBDP_FeesAPI();
         $this->payments = new WPBDP_PaymentsAPI();
         $this->listings = new WPBDP_ListingsAPI();
+
+        $this->_config = array('main_page' => 0); // some stuff we can know from the start and cache
 
         if (is_admin()) {
             $this->admin = new WPBDP_Admin();
@@ -410,9 +421,12 @@ class WPBDP_Plugin {
 
         add_action('init', array($this, 'install_or_update_plugin'), 1);
         add_action('init', array($this, '_register_post_type'), 0);
-        add_action('init', 'session_start');
+
+        add_action('init', array($this, '_plugin_initialization'));
+        add_action('init', array($this, '_session_start'));
+
         // add_action('init', create_function('', 'do_action("wpbdp_listings_expiration_check");'), 20); // XXX For testing only
-    
+
         add_filter('posts_request', create_function('$x', 'wpbdp_debug($x); return $x;')); // used for debugging
 
         add_filter('rewrite_rules_array', array($this, '_rewrite_rules'));
@@ -428,7 +442,7 @@ class WPBDP_Plugin {
         add_filter('taxonomy_template', array($this, '_category_template'));
         add_filter('single_template', array($this, '_single_template'));
 
-        add_filter('wp_title', array($this, '_page_title'));
+        add_filter('wp_title', array($this, '_page_title'), 10, 3);
         add_action('wp_footer', array($this, '_credits_footer'));
 
         add_action('widgets_init', array($this, '_register_widgets'));
@@ -663,80 +677,12 @@ class WPBDP_Plugin {
             }
 
         } else {
-            $default_fields = array(
-                array(
-                    'label' => __("Business Name","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'title',
-                    'weight' => 9,
-                    'is_required' => true,
-                    'display_options' => array('show_in_excerpt' => true)
-                ),
-                array(
-                    'label' => __("Business Genre","WPBDM"),
-                    'type' => 'select',
-                    'association' => 'category',
-                    'weight' => 8,
-                    'is_required' => true,
-                    'display_options' => array('show_in_excerpt' => true)
-                ),
-                array(
-                    'label' => __("Short Business Description","WPBDM"),
-                    'type' => 'textarea',
-                    'association' => 'excerpt',
-                    'weight' => 7
-                ),
-                array(
-                    'label' => __("Long Business Description","WPBDM"),
-                    'type' => 'textarea',
-                    'association' => 'content',
-                    'weight' => 6,
-                    'is_required' => true
-                ),
-                array(
-                    'label' => __("Business Website Address","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'meta',
-                    'weight' => 5,
-                    'validator' => 'URLValidator',
-                    'display_options' => array('show_in_excerpt' => true)
-                ),
-                array(
-                    'label' => __("Business Phone Number","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'meta',
-                    'weight' => 4,
-                    'display_options' => array('show_in_excerpt' => true)
-                ),
-                array(
-                    'label' => __("Business Fax","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'meta',
-                    'weight' => 3
-                ),
-                array(
-                    'label' => __("Business Contact Email","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'meta',
-                    'weight' => 2,
-                    'validator' => 'EmailValidator',
-                    'is_required' => true
-                ),
-                array(
-                    'label' => __("Business Tags","WPBDM"),
-                    'type' => 'textfield',
-                    'association' => 'tags',
-                    'weight' => 1
-                )
-            );
-
+            $default_fields = $this->formfields->getDefaultFields();
+            
             foreach ($default_fields as $field) {
-                $newfield = $field;
-                if (isset($newfield['display_options']))
-                    $newfield['display_options'] = serialize($newfield['display_options']);
-
-                $wpdb->insert($wpdb->prefix . 'wpbdp_form_fields', $newfield);
+                $this->formfields->addorUpdateField($field);
             }
+        
         }
 
         delete_option('wpbusdirman_db_version');
@@ -752,6 +698,12 @@ class WPBDP_Plugin {
 
         $plugin_dir = basename(dirname(__FILE__));
         load_plugin_textdomain( 'WPBDM', null, $plugin_dir.'/languages' );      
+    }
+
+    function _session_start() {
+        if (session_id() == '') {
+            session_start();
+        }
     }
 
     function _register_post_type() {
@@ -826,7 +778,33 @@ class WPBDP_Plugin {
         return false;
     }
 
-    public function _page_title($title) {
+    public function _page_title($title, $sep, $seplocation) {
+        $action = _wpbdp_current_action();
+
+        switch ($action) {
+            case 'browsetag':
+                $term = get_term_by('slug', get_query_var('tag'), wpbdp_tags_taxonomy());
+                return $term->name . ' ' . $sep . ' ';
+
+                break;
+
+            case 'browsecategory':
+                $term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy());
+                return $term->name . ' ' . $sep . ' ';                
+
+                break;
+
+            case 'showlisting':
+                $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
+                $post_title = get_the_title($listing_id);
+                return $post_title . ' '.  $sep . ' ';
+
+                break;
+
+            default:
+                break;
+        }
+
         return $title;
     }
 
@@ -844,9 +822,12 @@ class WPBDP_Plugin {
         register_widget('WPBDP_LatestListingsWidget');
         register_widget('WPBDP_FeaturedListingsWidget');
         register_widget('WPBDP_RandomListingsWidget');
+        register_widget('WPBDP_SearchWidget');
     }
 
     public function _listings_shortcode($atts) {
+        if (!$this->controller->check_main_page($msg)) return $msg;
+
         $atts = shortcode_atts(array('category' => null), $atts);
 
         if ($atts['category']) {
@@ -929,4 +910,3 @@ class WPBDP_Plugin {
 
 $wpbdp = new WPBDP_Plugin();
 $wpbdp->init();
-// $wpbdp->debug_on();

@@ -9,11 +9,25 @@ class WPBDP_DirectoryController {
 
     public function __construct() {
         add_action('pre_get_posts', array($this, '_handle_action')); // TODO: maybe another hook fits better?
-        add_filter('wp_title', array($this, '_wp_title'), 10, 3);
     }
 
     public function init() {
         $this->listings = wpbdp_listings_api();
+    }
+
+    public function check_main_page(&$msg) {
+        $msg = '';
+
+        $wpbdp = wpbdp();
+        if (!$wpbdp->_config['main_page']) {
+            if (current_user_can('administrator') || current_user_can('activate_plugins'))
+                $msg = __('You need to create a page with the [businessdirectory] shortcode for the Business Directory plugin to work correctly.', 'WPBDM');
+            else
+                $msg = __('The directory is temporarily disabled.', 'WPBDM');
+            return false;
+        }
+
+        return true;
     }
 
     public function _handle_action($query) {
@@ -31,22 +45,6 @@ class WPBDP_DirectoryController {
         if (!$action) $action = 'main';
 
         $this->action = $action;
-    }
-
-    public function _wp_title($title, $sep, $seplocation) {
-        global $post;
-
-        if ($this->action == 'browsecategory') {
-            $term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy());
-            return $term->name . ' ' . $sep . ' ';
-        }
-
-        if ($this->action == 'showlisting') {
-            if (get_query_var('id') || isset($_GET['id']))
-                return get_the_title(get_query_var('id')) . ' ' . $sep . ' ';
-        }
-
-        return $title;
     }
 
     public function get_current_action() {
@@ -102,6 +100,8 @@ class WPBDP_DirectoryController {
 
     /* Show listing. */
     public function show_listing() {
+        if (!$this->check_main_page($msg)) return $msg;
+
         if (get_query_var('listing') || isset($_GET['listing'])) {
             if ($posts = get_posts(array('post_status' => 'publish', 'numberposts' => 1, 'post_type' => wpbdp_post_type(), 'name' => get_query_var('listing') ? get_query_var('listing') : wpbdp_getv($_GET, 'listing', null) ) )) {
                 $listing_id = $posts[0]->ID;
@@ -118,6 +118,8 @@ class WPBDP_DirectoryController {
 
     /* Display category. */
     public function browse_category($category_id=null) {
+        if (!$this->check_main_page($msg)) return $msg;
+
         if (get_query_var('category')) {
             if ($term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy())) {
                 $category_id = $term->term_id;
@@ -154,6 +156,8 @@ class WPBDP_DirectoryController {
 
     /* Display category. */
     public function browse_tag() {
+        if (!$this->check_main_page($msg)) return $msg;
+
         $tag = get_term_by('slug', get_query_var('tag'), wpbdp_tags_taxonomy());
         $tag_id = $tag->term_id;
 
@@ -323,6 +327,8 @@ class WPBDP_DirectoryController {
      */
     // TODO login is required for edits
     public function submit_listing($listing_id=null) {
+        if (!$this->check_main_page($msg)) return $msg;
+
         $no_categories_msg = false;
 
         if (count(get_terms(wpbdp_categories_taxonomy(), array('hide_empty' => false))) == 0) {
@@ -367,6 +373,17 @@ class WPBDP_DirectoryController {
         }
 
         $html = '';
+
+        if (current_user_can('administrator')) {
+            if ($errors = wpbdp_payments_api()->check_config()) {
+                foreach ($errors as $error) {
+                    $html .= wpbdp_render_msg($error, 'error');
+                }
+            }
+
+            $html .= wpbdp_render_msg(_x('You are logged in as an administrator. Any payment steps will be skipped.', 'templates', 'WPBDM'));
+        }
+
         $html .= call_user_func(array($this, 'submit_listing_' . $step), $listing_id);
         $html .= apply_filters('wpbdp_listing_form', '', $this->_listing_data['listing_id']);
 
@@ -379,6 +396,7 @@ class WPBDP_DirectoryController {
         $formfields_api = wpbdp_formfields_api();
 
         $post_values = isset($_POST['listingfields']) ? $_POST['listingfields'] : array();
+        $post_values = stripslashes_deep($post_values);
         $validation_errors = array();
 
         $fields = array();
@@ -739,6 +757,8 @@ class WPBDP_DirectoryController {
 
     /* Manage Listings */
     public function manage_listings() {
+        if (!$this->check_main_page($msg)) return $msg;
+
         $current_user = is_user_logged_in() ? wp_get_current_user() : null;
         $listings = array();
 
@@ -863,8 +883,8 @@ class WPBDP_DirectoryController {
 
         if ($fee_info = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d AND expires_on IS NOT NULL AND expires_on < %s", intval($_GET['renewal_id']), $current_date))) {
             if ($post = get_post($fee_info->listing_id)) {
-                if ($post->post_author != wp_get_current_user()->ID || !has_term($fee_info->category_id, wpbdp_categories_taxonomy(), $post->ID))
-                    return '';
+                if (!has_term($fee_info->category_id, wpbdp_categories_taxonomy(), $post->ID))
+                    return _x('Invalid renewal requested.', 'templates', 'WPBDM');
 
                 $listingsapi = wpbdp_listings_api();
                 $feesapi = wpbdp_fees_api();
@@ -939,28 +959,23 @@ class WPBDP_DirectoryController {
         $results = array();
         if (isset($_GET['dosrch'])) {
             $search_args = array();
+            
             $search_args['q'] = wpbdp_getv($_GET, 'q', null);
-            $search_args['meta'] = array();
+            $search_args['fields'] = array(); // standard search fields
             $search_args['extra'] = array(); // search fields added by plugins
 
-            foreach (wpbdp_getv($_GET, '_m', array()) as $field_id => $field_search) {
-                $search_args['meta'][] = array('field_id' => $field_id,
-                                               'q' => wpbdp_getv($field_search, 'q', null),
-                                               'options' => wpbdp_getv($field_search, 'options', array())
-                                               );
-            }
+            foreach (wpbdp_getv($_GET, 'listingfields', array()) as $field_id => $field_search)
+                $search_args['fields'][] = array('field_id' => $field_id, 'q' => $field_search);
 
-            foreach (wpbdp_getv($_GET, '_x', array()) as $label => $field) {
+            foreach (wpbdp_getv($_GET, '_x', array()) as $label => $field)
                 $search_args['extra'][$label] = $field;
-            }
 
             $results = $listings_api->search($search_args);
         }
 
         $fields = array();
-        foreach ($fields_api->getFieldsByAssociation('meta') as $field) {
-            if ( ($field->display_options['show_in_listing'] || $field->display_options['show_in_excerpt']) &&
-                 ($field->validator != 'EmailValidator') ) {
+        foreach ($fields_api->getFields() as $field) {
+            if ( $field->validator != 'EmailValidator' && ($field->display_options['show_in_search']) ) {
                 $fields[] = $field;
             }
         }

@@ -23,8 +23,11 @@ class WPBDP_Admin {
         add_action('admin_enqueue_scripts', array($this, 'admin_javascript'));
         add_action('admin_enqueue_scripts', array($this, 'admin_styles'));
 
+        add_filter('wp_dropdown_users', array($this, '_dropdown_users'));
+
         add_filter(sprintf('manage_edit-%s_columns', WPBDP_Plugin::POST_TYPE),
                    array($this, 'add_custom_columns'));
+        add_filter('post_row_actions', array($this, '_row_actions'), 10, 2);
         add_filter('manage_edit-' . WPBDP_Plugin::POST_TYPE_CATEGORY . '_columns', array($this, '_custom_taxonomy_columns'));
         add_filter('manage_edit-' . WPBDP_Plugin::POST_TYPE_TAGS . '_columns', array($this, '_custom_taxonomy_columns'));
         add_action(sprintf('manage_posts_custom_column'), array($this, 'custom_columns'));
@@ -40,6 +43,7 @@ class WPBDP_Admin {
         add_action('wp_ajax_wpbdp-listingimages', array($this, '_listing_images'));
 
         add_action('admin_footer', array($this, '_add_bulk_actions'));
+        add_action('admin_footer', array($this, '_fix_new_links'));
     }
 
     function admin_javascript() {
@@ -100,21 +104,29 @@ class WPBDP_Admin {
                          'activate_plugins',
                          'wpbdp-csv-import',
                          array('WPBDP_CSVImportAdmin', 'admin_menu_cb'));
+
+        // XXX: just a little hack
+        global $submenu;
+        
+        if (current_user_can('administrator')) {
+            $submenu['wpbdp_admin'][1][2] = admin_url(sprintf('post-new.php?post_type=%s', wpbdp_post_type()));
+            $submenu['wpbdp_admin'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
+            $submenu['wpbdp_admin'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
+            $submenu['wpbdp_admin'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
+        } elseif (current_user_can('contributor')) {
+            $m = &$submenu['edit.php?post_type=' . wpbdp_post_type()];
+            $keys = array_keys($m);
+            $m[$keys[1]][2] = wpbdp_get_page_link('add-listing');
+        }
+
+        do_action('wpbdp_admin_menu', 'wpbdp_admin');
+
         add_submenu_page('wpbdp_admin',
                          _x('Uninstall WPDB Manager', 'admin menu', 'WPBDM'),
                          _x('Uninstall', 'admin menu', 'WPBDM'),
                          'activate_plugins',
                          'wpbdp_uninstall',
-                         array($this, 'uninstall_plugin'));
-
-        // just a little hack
-        if (current_user_can('activate_plugins')) {
-            global $submenu;
-            $submenu['wpbdp_admin'][1][2] = admin_url(sprintf('post-new.php?post_type=%s', wpbdp_post_type()));
-            $submenu['wpbdp_admin'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
-            $submenu['wpbdp_admin'][5][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'pendingupgrade'));
-            $submenu['wpbdp_admin'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', wpbdp()->get_post_type(), 'unpaid'));
-        }
+                         array($this, 'uninstall_plugin'));        
     }
 
     public function _delete_post_metadata($post_id) {
@@ -438,6 +450,9 @@ class WPBDP_Admin {
     }
 
     public function _add_bulk_actions() {
+        if (!current_user_can('administrator'))
+            return;
+        
         if ($screen = get_current_screen()) {
             if ($screen->id == 'edit-' . wpbdp_post_type()) {
                 if (isset($_GET['post_type']) && $_GET['post_type'] == WPBDP_Plugin::POST_TYPE) {
@@ -465,6 +480,16 @@ class WPBDP_Admin {
                     echo '</script>';
                 }
             }
+        }
+    }
+
+    public function _fix_new_links() {
+        // 'contributors' should still use the frontend to add listings (editors, authors and admins are allowed to add things directly)
+        // XXX: this is kind of hacky but is the best we can do atm, there aren't hooks to change add links
+        if (current_user_can('contributor') && isset($_GET['post_type']) && $_GET['post_type'] == wpbdp_post_type()) {
+            echo '<script type="text/javascript">';
+            echo sprintf('jQuery(\'a.add-new-h2\').attr(\'href\', \'%s\');', wpbdp_get_page_link('add-listing'));
+            echo '</script>';
         }
     }
 
@@ -573,45 +598,73 @@ class WPBDP_Admin {
         $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id'), $_SERVER['REQUEST_URI'] );
     }
 
+    public function _dropdown_users($output) {
+        global $post;
+
+        if (is_admin() && get_post_type($post) == wpbdp_post_type()) {
+            remove_filter('wp_dropdown_users', array($this, '_dropdown_users'));
+            $select = wp_dropdown_users(array(
+                'echo' => false,
+                'name' => 'post_author_override',
+                'selected' => !empty($post->ID) ? $post->post_author : wp_get_current_user()->ID,
+                'include_selected' => true,
+                'who' => 'all'
+            ));
+            add_filter('wp_dropdown_users', array($this, '_dropdown_users'));
+            return $select;
+
+        }
+
+        return $output;
+    }
+
     function add_custom_views($views) {
         global $wpdb;
 
-        $post_statuses = '\'' . join('\',\'', isset($_GET['post_status']) ? array($_GET['post_status']) : array('publish', 'draft')) . '\'';
+        if (current_user_can('administrator')) {
+            $post_statuses = '\'' . join('\',\'', isset($_GET['post_status']) ? array($_GET['post_status']) : array('publish', 'draft')) . '\'';
 
-        $paid_query = $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
-                                                           WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND pm.meta_value = %s) )",
-                                                           WPBDP_Plugin::POST_TYPE,
-                                                           '_wpbdp[payment_status]',
-                                                           'paid');
+            $paid_query = $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
+                                                               WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND pm.meta_value = %s) )",
+                                                               WPBDP_Plugin::POST_TYPE,
+                                                               '_wpbdp[payment_status]',
+                                                               'paid');
 
-        $paid = $wpdb->get_var( $paid_query);
+            $paid = $wpdb->get_var( $paid_query);
 
-        $unpaid = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
-                                                           WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND NOT pm.meta_value = %s) ) GROUP BY p.ID",
-                                                           WPBDP_Plugin::POST_TYPE,
-                                                           '_wpbdp[payment_status]',
-                                                           'paid') );
-        $pending_upgrade = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
-                                                           WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND pm.meta_value = %s) )",
-                                                           WPBDP_Plugin::POST_TYPE,
-                                                           '_wpbdp[sticky]',
-                                                           'pending') );
+            $unpaid = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
+                                                               WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND NOT pm.meta_value = %s) ) GROUP BY p.ID",
+                                                               WPBDP_Plugin::POST_TYPE,
+                                                               '_wpbdp[payment_status]',
+                                                               'paid') );
+            $pending_upgrade = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
+                                                               WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND pm.meta_value = %s) )",
+                                                               WPBDP_Plugin::POST_TYPE,
+                                                               '_wpbdp[sticky]',
+                                                               'pending') );
 
-        $views['paid'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
-                                 add_query_arg('wpbdmfilter', 'paid', remove_query_arg('post')),
-                                 wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'paid' ? 'current' : '',
-                                 __('Paid', 'WPBDM'),
-                                 number_format_i18n($paid));
-        $views['unpaid'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
-                                   add_query_arg('wpbdmfilter', 'unpaid', remove_query_arg('post')),
-                                   wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'unpaid' ? 'current' : '',
-                                   __('Unpaid', 'WPBDM'),
-                                   number_format_i18n($unpaid));
-        $views['featured'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
-                                   add_query_arg('wpbdmfilter', 'pendingupgrade', remove_query_arg('post')),
-                                   wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'pendingupgrade' ? 'current' : '',
-                                   __('Pending Upgrade', 'WPBDM'),
-                                   number_format_i18n($pending_upgrade));
+            $views['paid'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
+                                     add_query_arg('wpbdmfilter', 'paid', remove_query_arg('post')),
+                                     wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'paid' ? 'current' : '',
+                                     __('Paid', 'WPBDM'),
+                                     number_format_i18n($paid));
+            $views['unpaid'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
+                                       add_query_arg('wpbdmfilter', 'unpaid', remove_query_arg('post')),
+                                       wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'unpaid' ? 'current' : '',
+                                       __('Unpaid', 'WPBDM'),
+                                       number_format_i18n($unpaid));
+            $views['featured'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
+                                       add_query_arg('wpbdmfilter', 'pendingupgrade', remove_query_arg('post')),
+                                       wpbdp_getv($_REQUEST, 'wpbdmfilter') == 'pendingupgrade' ? 'current' : '',
+                                       __('Pending Upgrade', 'WPBDM'),
+                                       number_format_i18n($pending_upgrade));
+        } elseif (current_user_can('contributor')) {
+            if (isset($views['mine']))
+                return array($views['mine']);
+            else
+                return array();
+        }
+
         return $views;
 
     }
@@ -629,20 +682,39 @@ class WPBDP_Admin {
 
             if ($key == 'title') {
                 // add custom columns *after* the title column
+                $columns['bd_category'] = _x('Categories', 'admin', 'WPBDM');
                 $columns['bd_payment_status'] = __('Payment Status', 'WPBDM');
-                $columns['bd_sticky_status'] = __('Featured (Sticky) Status', 'WPBDM');                
+                $columns['bd_sticky_status'] = __('Featured (Sticky) Status', 'WPBDM');
             }
         }
 
         return $columns;
     }
 
+    public function _row_actions($actions, $post) {
+        if ($post->post_type == wpbdp_post_type() && current_user_can('contributor')) {
+            if (wpbdp_user_can('edit', $post->ID))
+                $actions['edit'] = sprintf('<a href="%s">%s</a>',
+                                            wpbdp_get_page_link('editlisting', $post->ID),
+                                            _x('Edit Listing', 'admin actions', 'WPBDM'));
+
+            if (wpbdp_user_can('delete', $listing_id))
+                $actions['delete'] = sprintf('<a href="%s">%s</a>', wpbdp_get_page_link('deletelisting', $listing_id), _x('Delete Listing', 'admin actions', 'WPBDM'));
+        }
+
+        return $actions;
+    }
+
     function custom_columns($column) {
         switch ($column) {
+            case 'bd_category':
+                $this->category_column();
+                break;
+
             case 'bd_payment_status':
                 $this->payment_status_column();
                 break;
-            
+
             case 'bd_sticky_status':
                 $this->sticky_status_column();
                 break;
@@ -650,6 +722,11 @@ class WPBDP_Admin {
             default:
                 break;
         }
+    }
+
+    private function category_column() {
+        global $post;
+        echo get_the_term_list($post->ID, wpbdp_categories_taxonomy(), '', ', ', '' );
     }
 
     private function payment_status_column() {
@@ -697,7 +774,7 @@ class WPBDP_Admin {
 
         echo '<div class="row-actions">';
 
-        if (current_user_can('activate_plugins')) {
+        if (current_user_can('administrator')) {
             if ($status == 'sticky') {
                 echo sprintf('<span><a href="%s">%s</a></span>',
                              add_query_arg(array('wpbdmaction' => 'cancelfeatured', 'post' => $post->ID)),
@@ -707,6 +784,8 @@ class WPBDP_Admin {
                              add_query_arg(array('wpbdmaction' => 'upgradefeatured', 'post' => $post->ID)),
                              '<b>↑</b> ' . __('Upgrade to Featured', 'WPBDM'));
             }
+        } elseif (current_user_can('contributor') && wpbdp_user_can('upgrade-to-sticky', $post->ID)) {
+                echo sprintf('<span><a href="%s"><b>↑</b> %s</a></span>', wpbdp_get_page_link('upgradetostickylisting', $post->ID), _x('Upgrade to Featured', 'admin actions', 'WPBDM'));            
         }
 
         echo '</div>';
@@ -820,11 +899,9 @@ class WPBDP_Admin {
         if ( (isset($_GET['post_type']) && $_GET['post_type'] == wpbdp_post_type()) ||
              (isset($_GET['page']) && stripos($_GET['page'], 'wpbdp_') !== FALSE) ) {
 
-            if (wpbdp_get_option('payments-on') && !wpbdp_payments_api()->payments_possible())
-                $this->messages[] = array(
-                    sprintf(_x('You have payments turned on but no gateway is enabled. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the directory will operate in <i>Free Mode</i>.', 'admin', 'WPBDM'),
-                        admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment')),
-                    'error');
+            if ($errors = wpbdp_payments_api()->check_config()) {
+                foreach ($errors as $error) $this->messages[] = array($error, 'error');
+            }
         }
     }
 
