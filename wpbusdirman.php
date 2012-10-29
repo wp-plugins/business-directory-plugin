@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.1.5.1
+Version: 2.1.5.2
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -175,7 +175,7 @@ require_once(WPBDP_PATH . 'widgets.php');
 
 class WPBDP_Plugin {
 
-    const VERSION = '2.1.6';
+    const VERSION = '2.1.5';
     const DB_VERSION = '3.1';
 
     const POST_TYPE = 'wpbdp_listing';
@@ -299,15 +299,15 @@ class WPBDP_Plugin {
             global $wp_rewrite;
 
             $page_link = wpbdp_get_page_link('main');
-            $rewrite_base = rtrim(str_replace(home_url() . '/', '', $page_link), '/');
+            $rewrite_base = str_replace('index.php/', '', rtrim(str_replace(home_url() . '/', '', $page_link), '/'));
             
             $rules['(' . $rewrite_base . ')/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&paged=$matches[2]';
             $rules['(' . $rewrite_base . ')/([0-9]{1,})/?(.*)/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
             
-            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]&paged=$matches[3]';
-            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '(.+?)$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]';
-            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]&paged=$matches[3]';
-            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '(.+?)$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]';            
+            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]&paged=$matches[3]';
+            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]';
+            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]&paged=$matches[3]';
+            $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]';            
         }
 
         return $rules;
@@ -320,6 +320,7 @@ class WPBDP_Plugin {
 
     public function _wp_loaded() {
         if ($rules = get_option( 'rewrite_rules' )) {
+            // wpbdp_debug_e($this->get_rewrite_rules());
             foreach ($this->get_rewrite_rules() as $k => $v) {
                 if (!isset($rules[$k]) || $rules[$k] != $v) {
                     global $wp_rewrite;
@@ -587,7 +588,7 @@ class WPBDP_Plugin {
 
                 foreach ($old_meta_keys as $meta_key) {
                     $query = $wpdb->prepare("UPDATE {$wpdb->postmeta} SET meta_key = %s WHERE meta_key = %s AND {$wpdb->postmeta}.post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_type = %s)",
-                                            '_wpbdp_' . $meta_key, $meta_key, self::POST_TYPE);
+                                            '_wpbdp_' . $meta_key, $meta_key, 'wpbdm-directory');
                     $wpdb->query($query);
                 }
 

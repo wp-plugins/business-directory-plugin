@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget
 Requires at least: 3.0
 Tested up to: 3.4.2
-Last Updated: 2012-Oct-23
-Stable tag: tags/2.1.5
+Last Updated: 2012-Oct-29
+Stable tag: tags/2.1.5.2
 
 Business Directory Plugin allows you to build local directories, business provider listings, Yellow-Pages style business directories, Yelp-like review sections and more. 
 
@@ -105,6 +105,21 @@ If you are having problems please visit http://www.businessdirectoryplugin.com/s
 
 
 == Changelog ==
+
+Version 2.1.5.2
+
+   1. Added support for PayPal currencies:  BRL, TRY, MRY
+   
+   2. Fixed bug where upgrade of Website address did not auto-copy the link text
+   
+   3. Fixed advanced search issues with categories
+   
+   4. Fixed advanced search to use OR instead of AND for multi-select listboxes
+   
+   5. Fixed URL validator to not make field required when URL is empty
+   
+   6. Fixed permalink rules to work with index.php-based approach
+   
 
 Version 2.1.5.1
 

@@ -516,43 +516,45 @@ class WPBDP_ListingsAPI {
                             $where .= $wpdb->prepare(" AND {$wpdb->posts}.post_excerpt LIKE '%%%s%%'", $q);
                             break;
                         case 'category':
-                            $term_ids = is_array($q) ? implode(',',  array_diff($q, array('-1', '0')) ) : $q;
-                            
-                            if ($term_ids) {
-                                $query .= " LEFT JOIN {$wpdb->term_relationships} AS trel1 ON ({$wpdb->posts}.ID = trel1.object_id) ";
-                                $where .= " AND trel1.term_taxonomy_id IN ({$term_ids}) ";
+                            $term_ids = is_array($q) ? $q : array($q);
+                            $term_ids = implode(',',  array_diff($term_ids, array('-1', '0')) );
+
+                             if ($term_ids) {
+                                $query .= " LEFT JOIN {$wpdb->term_relationships} AS trel1 ON ({$wpdb->posts}.ID = trel1.object_id) LEFT JOIN {$wpdb->term_taxonomy} AS ttax1 ON (trel1.term_taxonomy_id = ttax1.term_taxonomy_id)";
+                                $where .= " AND ttax1.term_id IN ({$term_ids}) ";
                             }
 
                             break;
                         case 'tags':
-                            $terms = explode(',', $q);
+                            $terms = is_array($q) ? array_values($q) : explode(',', $q);
                             $term_ids = array();
 
                             foreach ($terms as $term_name) {
                                 if ($term = get_term_by('name', $term_name, wpbdp_tags_taxonomy())) {
                                     $term_ids[] = $term->term_id;
+                                } else {
+                                    $where .= ' AND 1=0'; // force no results when a tag does not exist
                                 }
                             }
 
                             if ($term_ids) {
                                 $term_ids = implode(',', $term_ids);
-                                $query .= " LEFT JOIN {$wpdb->term_relationships} AS trel2 ON ({$wpdb->posts}.ID = trel2.object_id) ";
-                                $where .= " AND trel2.term_taxonomy_id IN ({$term_ids}) ";                                
+                                $query .= " LEFT JOIN {$wpdb->term_relationships} AS trel2 ON ({$wpdb->posts}.ID = trel2.object_id) LEFT JOIN {$wpdb->term_taxonomy} AS ttax2 ON (trel2.term_taxonomy_id = ttax2.term_taxonomy_id)";
+                                $where .= " AND ttax2.term_id IN ({$term_ids}) ";
                             }
 
                             break;
                         case 'meta':
-                            if (in_array($field->type, array('checkbox', 'multiselect', 'select'))) {
-                                // multivalued field
-                                $options = is_array($q) ? $q : array($q);
-                                $where_ = '%%' . implode("%%", $options) . '%%';
+                            if (in_array($field->type, array('checkbox', 'multiselect', 'select'))) { // multivalued field
+                                $options = array_diff(is_array($q) ? $q : array($q), array(''));
                                 
+                                $pattern = '(' . implode('|', $options) . '){1}([tab]{1}|[tab]{0}$)';
+
                                 $query .= " INNER JOIN {$wpdb->postmeta} AS mt{$i}mv ON ({$wpdb->posts}.ID = mt{$i}mv.post_id)";
-                                $where .= $wpdb->prepare(" AND (mt{$i}mv.meta_key = %s AND mt{$i}mv.meta_value LIKE %s)",
+                                $where .= $wpdb->prepare(" AND (mt{$i}mv.meta_key = %s AND mt{$i}mv.meta_value REGEXP %s)",
                                                          "_wpbdp[fields][{$field->id}]",
-                                                         $where_);                                
-                            } else {
-                                // single-valued field
+                                                         $pattern);
+                            } else { // single-valued field
                                 $query .= sprintf(" INNER JOIN {$wpdb->postmeta} AS mt%1$1d ON ({$wpdb->posts}.ID = mt%1$1d.post_id)", $i);
                                 $where .= $wpdb->prepare(" AND (mt{$i}.meta_key = %s AND mt{$i}.meta_value LIKE '%%%s%%')",
                                                          '_wpbdp[fields][' . $field->id . ']',
