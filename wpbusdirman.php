@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.1.5.2
+Version: 2.1.6
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -105,62 +105,6 @@ function wpbusdirman_contactform($wpbusdirmanpermalink,$wpbusdirmanlistingpostid
                         ), false);
 }
 
-function wpbusdirman_dropdown_categories()
-{
-    global $post;
-    $wpbusdirman_permalink=get_permalink(wpbdp_get_page_id('main'));
-    $wpbdm_hide_empty=wpbdp_get_option('hide-empty-categories');
-    $html = '';
-
-    $wpbdm_show_count = wpbdp_get_option('show-category-post-count');
-    $wpbdm_show_parent_categories_only=wpbdp_get_option('show-only-parent-categories');
-
-    $wpbusdirman_postvalues=get_the_terms(get_the_ID(), wpbdp_categories_taxonomy());
-    if($wpbusdirman_postvalues)
-    {
-        foreach($wpbusdirman_postvalues as $wpbusdirman_postvalue)
-        {
-            $wpbusdirman_field_value_selected=$wpbusdirman_postvalue->term_id;
-        }
-    }
-    $html .= '<form action="' . bloginfo('url') . '" method="get">';
-    $taxonomies = array(wpbdp_categories_taxonomy());
-    $args = array('echo'=>0,
-                  'show_option_none'=>$wpbusdirman_selectcattext,
-                  'orderby' => wpbdp_get_option('categories-order-by'),
-                  'selected' => $wpbusdirman_field_value_selected,
-                  'order' => wpbdp_get_option('categories-sort'),
-                  'hide_empty' => $wpbdm_hide_empty,
-                  'hierarchical' => $wpbdm_show_parent_categories_only);
-    $select = get_terms_dropdown($taxonomies, $args);
-    $select = preg_replace("#<select([^>]*)>#", "<select$1 onchange='return this.form.submit()'>", $select);
-    $html .= $select;
-    $html .= '<noscript><div><input type="submit" value="N?yt?" /></div></noscript></form>';
-
-    return $html;
-}
-
-function get_terms_dropdown($taxonomies, $args)
-{
-    $myterms = get_terms($taxonomies, $args);
-    $output ="<select name='". wpbdp_categories_taxonomy() ."'>";
-
-    if($myterms)
-    {
-        foreach($myterms as $term){
-            $root_url = get_bloginfo('url');
-            $term_taxonomy=$term->taxonomy;
-            $term_slug=$term->slug;
-            $term_name =$term->name;
-            $link = $term_slug;
-            $output .="<option value='".$link."'>".$term_name."</option>";
-        }
-    }
-    $output .="</select>";
-
-    return $output;
-}
-
 global $wpbdp;
 
 require_once(WPBDP_PATH . 'utils.php');
@@ -175,7 +119,7 @@ require_once(WPBDP_PATH . 'widgets.php');
 
 class WPBDP_Plugin {
 
-    const VERSION = '2.1.5';
+    const VERSION = '2.1.6';
     const DB_VERSION = '3.1';
 
     const POST_TYPE = 'wpbdp_listing';
@@ -425,6 +369,7 @@ class WPBDP_Plugin {
 
         add_action('init', array($this, '_plugin_initialization'));
         add_action('init', array($this, '_session_start'));
+        add_action('init', array($this, '_register_image_sizes'));
 
         // add_action('init', create_function('', 'do_action("wpbdp_listings_expiration_check");'), 20); // XXX For testing only
 
@@ -473,9 +418,11 @@ class WPBDP_Plugin {
     }
 
     public function _init_modules() {
-        do_action('wpbdp_modules_init');
+        do_action('wpbdp_modules_loaded');
         do_action('wpbdp_register_settings', $this->settings);
-        do_action('wpbdp_register_fields', $this->formfields);        
+        do_action('wpbdp_register_fields', $this->formfields);
+
+        do_action('wpbdp_modules_init');
     }
 
     public function get_post_type() {
@@ -746,6 +693,17 @@ class WPBDP_Plugin {
         register_taxonomy(self::POST_TYPE_TAGS, self::POST_TYPE, array( 'hierarchical' => false, 'label' => 'Directory Tags', 'singular_name' => 'Directory Tag', 'show_in_nav_menus' => true, 'update_count_callback' => '_update_post_term_count', 'query_var' => true, 'rewrite' => array('slug' => $tags_slug) ) );
     }
 
+    public function _register_image_sizes() {
+        $thumbnail_width = intval( wpbdp_get_option( 'thumbnail-width' ) );
+
+        $max_width = intval( wpbdp_get_option('image-max-width') );
+        $max_height = intval( wpbdp_get_option('image-max-height') );
+
+        // thumbnail size
+        add_image_size( 'wpbdp-thumb', $thumbnail_width, 0, false );
+        add_image_size( 'wpbdp-large', $max_width, $max_height, false );
+    }
+
     public function debug_on() {
         WPBDP_Debugging::debug_on();
     }
@@ -791,7 +749,9 @@ class WPBDP_Plugin {
 
             case 'browsecategory':
                 $term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy());
-                return $term->name . ' ' . $sep . ' ';                
+                if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), wpbdp_categories_taxonomy());
+
+                return $term->name . ' ' . $sep . ' ';
 
                 break;
 

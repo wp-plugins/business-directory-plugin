@@ -185,7 +185,7 @@ function wpbusdirman_post_main_image() {
                           );
         }
     } elseif ($main_image) {
-        return wp_get_attachment_image($main_image->ID, 'medium', false, array(
+        return wp_get_attachment_image($main_image->ID, 'wpbdp-thumb', false, array(
             'alt' => the_title(null, null, false),
             'title' => the_title(null, null, false)
             ));
@@ -254,14 +254,15 @@ function wpbusdirman_display_the_thumbnail() {
     $listings_api = wpbdp_listings_api();
     
     if ($thumbnail_id = $listings_api->get_thumbnail_id($post->ID)) {
-        $thumbnail = wp_get_attachment_thumb_url($thumbnail_id);
+        $image_info = wp_get_attachment_image_src( $thumbnail_id, 'wpbdp-thumb' );
+        $thumbnail = $image_info[0];
     }
 
     if (!$thumbnail && function_exists('has_post_thumbnail') && has_post_thumbnail($post->ID))
         return sprintf('<div class="listing-thumbnail"><a href="%s">%s</a></div>',
                        get_permalink(),
                        get_the_post_thumbnail($post->ID,
-                                        array(wpbdp_get_option('thumbnail-width', '120'), wpbdp_get_option('thumbnail-width', '120')),
+                                        'wpbdp-thumb',
                                         array('class' => 'wpbdmthumbs',
                                               'alt' => the_title(null, null, false),
                                               'title' => the_title(null, null, false) ))
@@ -272,10 +273,10 @@ function wpbusdirman_display_the_thumbnail() {
 
     if ($thumbnail) {
         $html .= '<div class="listing-thumbnail">';
-        $html .= sprintf('<a href="%s"><img class="wpbdmthumbs" src="%s" width="%s" alt="%s" title="%s" border="0" /></a>',
+        $html .= sprintf('<a href="%s"><img class="wpbdmthumbs" src="%s" style="max-width: %dpx;" alt="%s" title="%s" border="0" /></a>',
                          get_permalink(),
                          $thumbnail,
-                         wpbdp_get_option('thumbnail-width', '120'),
+                         wpbdp_get_option('thumbnail-width'),
                          the_title(null, null, false),
                          the_title(null, null, false)
                         );
@@ -350,17 +351,18 @@ function wpbusdirman_catpage_title() {
 }
 
 function wpbusdirman_post_catpage_title() {
-    global $post;
-    $term = get_term_by( 'slug', get_query_var( 'term' ), get_query_var( 'taxonomy' ) );
-    $html = '';
+    $term = null;
 
-    $html .=  $term->name;
+    if ( get_query_var('taxonomy') == wpbdp_categories_taxonomy() ) {
+        $term = get_term_by('id', get_query_var('term_id'), wpbdp_categories_taxonomy());
+    } elseif ( get_query_var('taxonomy') == wpbdp_tags_taxonomy() ) {
+        $term = get_term_by('id', get_query_var('term_id'), wpbdp_tags_taxonomy());
+    }
 
-    return $html;
+    return esc_attr($term->name);
 }
 
-function wpbusdirman_list_categories()
-{
+function wpbusdirman_list_categories() {
     echo wpbusdirman_post_list_categories();
 }
 
@@ -369,7 +371,8 @@ function wpbusdirman_post_list_categories() {
     $wpbdm_show_count= wpbdp_get_option('show-category-post-count');
     $wpbdm_show_parent_categories_only= wpbdp_get_option('show-only-parent-categories');
 
-    $html = '';
+    $html  = '';
+    $html .= '<ul class="wpbdp-categories">';
 
     $taxonomy     = wpbdp_categories_taxonomy();
     $orderby      = wpbdp_get_option('categories-order-by');
@@ -391,7 +394,9 @@ function wpbusdirman_post_list_categories() {
         'depth' => $wpbdm_show_parent_categories_only ? 1 : 0
     ));
 
-    return $html;
+    $html .= '</ul>';
+
+    return apply_filters('wpbdp_categories_list', $html);
 }
 
 function wpbusdirman_menu_buttons()
@@ -505,6 +510,35 @@ function wpbdp_sticky_loop($category_id=null, $taxonomy=null) {
 
     foreach ($stickies as $sticky_post)
         $html .= wpbdp_render_listing($sticky_post->ID, 'excerpt');
+
+    return $html;
+}
+
+/* deprecated since 2.1.6 */
+function wpbusdirman_dropdown_categories() {
+    $html  = '';
+
+    $html .= sprintf('<form action="%s">', site_url('/'));
+    $html .= wp_dropdown_categories(array(
+                   'taxonomy' => wpbdp_categories_taxonomy(),
+                   'show_option_none' => '—',
+                   'order' => wpbdp_get_option('categories-sort'),                   
+                   'orderby' => wpbdp_get_option('categories-order-by'),
+                   'hide_empty' => wpbdp_get_option('hide-empty-categories'),
+                   'hierarchical' => !wpbdp_get_option('show-only-parent-categories'),
+                   'echo' => false,
+                   'name' => wpbdp_categories_taxonomy()
+             ));
+
+    $html = preg_replace("/\\<select(.*)name=('|\")(.*)('|\")(.*)\\>/uiUs",
+                         "<select name=\"$3\" onchange=\"return this.form.submit();\" $1 $5>",
+                         $html);
+
+    // no-script support
+    $html .= '<noscript>';
+    $html .= '<input type="submit" value="→" />';
+    $html .= '</noscript>';
+    $html .= '</form>';
 
     return $html;
 }

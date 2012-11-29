@@ -9,6 +9,7 @@ class WPBDP_DirectoryController {
 
     public function __construct() {
         add_action('pre_get_posts', array($this, '_handle_action')); // TODO: maybe another hook fits better?
+        $this->_extra_sections = array();
     }
 
     public function init() {
@@ -123,6 +124,8 @@ class WPBDP_DirectoryController {
         if (get_query_var('category')) {
             if ($term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy())) {
                 $category_id = $term->term_id;
+            } else {
+                $category_id = intval(get_query_var('category'));
             }
         }
 
@@ -325,6 +328,27 @@ class WPBDP_DirectoryController {
     /*
      * Submit listing process.
      */
+
+    /*
+     * @since 2.1.6
+     */
+    public function register_listing_form_section($id, $section=array()) {
+        $section = array_merge( array(
+            'title' => '',
+            'display' => null,
+            'process' => null,
+            'save' => null
+        ), $section);
+
+        if (!$section['display'] && !$section['process'])
+            return false;
+
+        $section['id'] = $id;
+        $this->_extra_sections[$id] = (object) $section;
+
+        return true;
+    }
+
     // TODO login is required for edits
     public function submit_listing($listing_id=null) {
         if (!$this->check_main_page($msg)) return $msg;
@@ -607,12 +631,14 @@ class WPBDP_DirectoryController {
                 $action = 'submit';
         }
 
+        $validation_errors = array();
+
         $images_allowed = 0;
         foreach ($this->_listing_data['fees'] as $fee)
             $images_allowed += $fee->images;
 
         if (!wpbdp_get_option('allow-images') || $images_allowed == 0)
-            return $this->submit_listing_save();
+            return $this->submit_listing_before_save();
 
         if ($this->_listing_data['listing_id'] && !$this->_listing_data['images']) {
             foreach (wpbdp_listings_api()->get_images($this->_listing_data['listing_id']) as $image) {
@@ -628,37 +654,18 @@ class WPBDP_DirectoryController {
         switch ($action) {
             case 'upload':
                 if (($images_allowed - count($images) - 1) >= 0) {
-                    require_once(ABSPATH . 'wp-admin/includes/file.php');
-                    require_once(ABSPATH . 'wp-admin/includes/image.php');
-
                     if ($image_file = $_FILES['image']) {
-                        if ($image_file['error'] == 0) {
-                            $wp_image_ = wp_handle_upload($image_file, array('test_form' => FALSE));
+                        $image_error = '';
 
-                            if (!isset($wp_image_['error'])) {
-                                if ($attachment_id = wp_insert_attachment(array(
-                                                                'post_mime_type' => $wp_image_['type'],
-                                                                'post_title' => preg_replace('/\.[^.]+$/', '', basename($wp_image_['file'])),
-                                                                'post_content' => '',
-                                                                'post_status' => 'inherit'
-                                                                ), $wp_image_['file'])) {
-
-                                    $attach_data = wp_generate_attachment_metadata($attachment_id, $wp_image_['file']);
-                                    wp_update_attachment_metadata($attachment_id, $attach_data);
-
-                                    if (wp_attachment_is_image($attachment_id)) {
-                                        $this->_listing_data['images'][] = $attachment_id;
-                                    } else {
-                                        wp_delete_attachment($attachment_id, true);
-                                    }
-
-                                }
-                            } else {
-                                print 'image error';
-                            }
+                        if ( $attachment_id = wpbdp_media_upload( $image_file, true, true, array(
+                            'image' => true,
+                            'max-size' => intval(wpbdp_get_option( 'image-max-filesize' )) * 1024
+                            ), $image_error ) ) {
+                            $this->_listing_data['images'][] = $attachment_id;
                         } else {
-                            print 'image error';
+                            $validation_errors[] = $image_error;
                         }
+
                     }
                 }
                 break;
@@ -673,7 +680,7 @@ class WPBDP_DirectoryController {
                     
                 break;
             case 'submit':
-                return $this->submit_listing_save();
+                return $this->submit_listing_before_save();
                 break;
             default:
                 break;
@@ -688,7 +695,7 @@ class WPBDP_DirectoryController {
         }
 
         return wpbdp_render('listing-form-images', array(
-                            'validation_errors' => null,
+                            'validation_errors' => $validation_errors,
                             'listing' => null,
                             'listing_data' => $this->_listing_data,
                             'can_upload_images' => (($images_allowed - count($images))> 0),
@@ -699,10 +706,50 @@ class WPBDP_DirectoryController {
                             ), false);
     }
 
-    public function submit_listing_save() {
-        if (isset($_POST['thumbnail_id']))
-            $this->_listing_data['thumbnail_id'] = intval($_POST['thumbnail_id']);
+    public function submit_listing_before_save() {
+        if ( isset($_POST['thumbnail_id']) )
+            $this->_listing_data['thumbnail_id'] = intval( $_POST['thumbnail_id'] );
 
+        if ( !$this->_extra_sections )
+            return $this->submit_listing_save();
+
+        if ( !isset($this->_listing_data['extra_sections']) )
+            $this->_listing_data['extra_sections'] = array();
+
+        
+        $continue_to_save = true;
+        if ( !isset($_POST['do_extra_sections']) )
+            $continue_to_save = false;
+
+        foreach ( $this->_extra_sections as &$section ) {
+            if ( !isset($this->_listing_data['extra_sections'][$section->id]) )
+                $this->_listing_data['extra_sections'][$section->id] = array();
+
+            $process_result = false;
+
+            if ( isset($_POST['do_extra_sections']) && $section->process ) {
+                $process_result = call_user_func( $section->process, &$this->_listing_data['extra_sections'][$section->id], $this->_listing_data['listing_id'] );
+                $continue_to_save = $continue_to_save && $process_result;
+            }
+
+            if ( !$process_result && $section->display ) {
+                $section->_output = call_user_func( $section->display, &$this->_listing_data['extra_sections'][$section->id], $this->_listing_data['listing_id'] );
+            }
+        }
+
+        if ($continue_to_save) {
+            return $this->submit_listing_save();
+        }
+
+        return wpbdp_render('listing-form-extra', array(
+                            'listing_data' => $this->_listing_data,
+                            'sections' => $this->_extra_sections
+                            ), false);
+
+        return $html;
+    }
+
+    public function submit_listing_save() {
         $data = $this->_listing_data;
 
         if (isset($_SESSION['wpbdp-submitted-listing-id']) && $_SESSION['wpbdp-submitted-listing-id'] > 0) {
@@ -718,12 +765,21 @@ class WPBDP_DirectoryController {
         if ($listing_id = $this->listings->add_listing($data, $transaction_id)) {
             $_SESSION['wpbdp-submitted-listing-id'] = $listing_id;
 
+            // call save() on extra sections
+            if ( $this->_extra_sections ) {
+                foreach ( $this->_extra_sections as &$section ) {
+                    if ( $section->save ) {
+                        call_user_func($section->save, &$this->_listing_data['extra_sections'][$section->id], $listing_id );
+                    }
+                }
+            }
+
             $cost = $this->listings->cost_of_listing($listing_id, true);
 
             if (!current_user_can('administrator') && ($cost > 0.0)) {
                 $payments_api = wpbdp_payments_api();
                 $payment_page = $payments_api->render_payment_page(array(
-                    'title' => _x('Step 4 - Checkout', 'templates', 'WPBDM'),
+                    'title' => _x('Step 5 - Checkout', 'templates', 'WPBDM'),
                     'transaction_id' => $transaction_id,
                     'item_text' => _x('Pay %1$s listing fee via %2$s', 'templates', 'WPBDM')
                 ));
@@ -798,77 +854,69 @@ class WPBDP_DirectoryController {
 
     /* Upgrade to sticky. */
     public function upgrade_to_sticky() {
-        if (!wpbdp_get_option('featured-on'))
-            return;
+        $listing_id = wpbdp_getv($_REQUEST, 'listing_id');
 
-        if ($listing_id = wpbdp_getv($_REQUEST, 'listing_id')) {
-            if ( (get_post($listing_id)->post_author != wp_get_current_user()->id) && !current_user_can('administrator'))
-                return '';
+        if ( !$listing_id || !wpbdp_user_can('upgrade-to-sticky', $listing_id) )
+            return '';
 
-            $listings_api = wpbdp_listings_api();
-            
-            if ($listings_api->get_payment_status($listing_id) != 'paid' && !current_user_can('administrator')) {
+        $upgrades_api = wpbdp_listing_upgrades_api();
+        $listings_api = wpbdp_listings_api();
+
+        if ($listings_api->get_payment_status($listing_id) != 'paid' && !current_user_can('administrator')) {
+            $html  = '';
+            $html .= wpbdp_render_msg(_x('You can not upgrade your listing until its payment has been cleared.', 'templates', 'WPBDM'));
+            $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+            return $html;
+        }
+
+        $sticky_info = $upgrades_api->get_info($listing_id);
+
+        if ($sticky_info->pending) {
+            $html  = '';
+            $html .= wpbdp_render_msg(_x('Your listing is already pending approval for "featured" status.', 'templates', 'WPBDM'));
+            $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+            return $html;
+        }
+
+        $action = isset($_POST['do_upgrade']) ? 'do_upgrade' : 'pre_upgrade';
+
+        switch ($action) {
+            case 'do_upgrade':
+                $payments_api = wpbdp_payments_api();
+                
+                $transaction_id = $upgrades_api->request_upgrade($listing_id);
+
+                if ($transaction_id && current_user_can('administrator')) {
+                    // auto-approve transaction if we are admins
+                    $transaction = $payments_api->get_transaction($transaction_id);
+                    $transaction->status = 'approved';
+                    $transaction->processed_by = 'admin';
+                    $transaction->processed_on = date('Y-m-d H:i:s', time());
+                    $payments_api->save_transaction($transaction);
+
+                    $html  = '';
+                    $html .= wpbdp_render_msg(_x('Listing has been upgraded.', 'templates', 'WPBDM'));
+                    $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+                    return $html;
+                }
+
+                return $payments_api->render_payment_page(array(
+                    'title' => _x('Upgrade listing', 'templates', 'WPBDM'),
+                    'transaction_id' => $transaction_id,
+                    'item_text' => _x('Pay %s upgrade fee via %s', 'templates', 'WPBDM')
+                ));
+
+                break;
+            default:
                 $html  = '';
-                $html .= wpbdp_render_msg(_x('You can not upgrade your listing until its payment has been cleared.', 'templates', 'WPBDM'));
-                $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
+
+                return wpbdp_render('listing-upgradetosticky', array(
+                    'listing' => get_post($listing_id),
+                    'featured_level' => $sticky_info->upgrade
+                ), false);
+
                 return $html;
-            }
-
-            $action = '';
-            if (isset($_POST['do_upgrade']))
-                $action = 'do_upgrade';
-
-            switch ($action) {
-                case 'do_upgrade':
-                    $listings_api = wpbdp_listings_api();
-                    $payments_api = wpbdp_payments_api();
-
-                    $transaction_id = null;
-                    $listings_api->request_listing_upgrade($listing_id, $transaction_id);
-
-                    if (current_user_can('administrator')) {
-                        // auto-approve transaction if we are admins
-                        $transaction = $payments_api->get_transaction($transaction_id);
-                        $transaction->status = 'approved';
-                        $transaction->processed_by = 'admin';
-                        $transaction->processed_on = date('Y-m-d H:i:s', time());
-                        $payments_api->save_transaction($transaction);
-
-                        $html  = '';
-                        $html .= wpbdp_render_msg(_x('Listing is now featured.', 'templates', 'WPBDM'));
-                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
-                        return $html;
-                    }
-
-                    return $payments_api->render_payment_page(array(
-                        'title' => _x('Upgrade listing', 'templates', 'WPBDM'),
-                        'transaction_id' => $transaction_id,
-                        'item_text' => _x('Pay %s upgrade fee via %s', 'templates', 'WPBDM')
-                    ));
-
-                    break;
-                default:
-                    $sticky_status = $listings_api->get_sticky_status($listing_id);
-
-                    if ($sticky_status == 'sticky') {
-                        $html  = '';
-                        $html .= wpbdp_render_msg(_x('Your listing is already featured.', 'templates', 'WPBDM')); 
-                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));                        
-                        return $html;
-                    } elseif ($sticky_status == 'pending') {
-                        $html  = '';
-                        $html .= wpbdp_render_msg(_x('Your listing is already pending approval for "featured" status.', 'templates', 'WPBDM'));
-                        $html .= sprintf('<a href="%s">%s</a>', get_permalink($listing_id), _x('Return to listing.', 'templates', 'WPBDM'));
-                        return $html;                        
-                    } else {
-                        return wpbdp_render('listing-upgradetosticky', array(
-                            'listing' => get_post($listing_id),
-                        ), false);                      
-                    }
-
-                    break;
-            }
-
+                break;
         }
     }
 

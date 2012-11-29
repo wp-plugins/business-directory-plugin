@@ -185,12 +185,14 @@ class WPBDP_Admin {
         echo '<div class="clear"></div>';
 
         // listing images
-        echo sprintf('<div id="wpbdp-listing-images" class="wpbdp-ajax-placeholder"
-                           data-action="wpbdp-listingimages"
-                           data-post_id="%s"
-                           data-baseurl="%s"></div>',
-                    $post->ID,
-                    remove_query_arg(array('message', 'wpbdmaction')));
+        if (current_user_can('administrator')) {
+            echo sprintf('<div id="wpbdp-listing-images" class="wpbdp-ajax-placeholder"
+                               data-action="wpbdp-listingimages"
+                               data-post_id="%s"
+                               data-baseurl="%s"></div>',
+                        $post->ID,
+                        remove_query_arg(array('message', 'wpbdmaction')));
+        }
     }
 
     public function _checklist_args($args) {
@@ -336,6 +338,7 @@ class WPBDP_Admin {
 
     public function listing_metabox($post) {
         $listings_api = wpbdp_listings_api();
+        $upgrades_api = wpbdp_listing_upgrades_api();
 
         // Payment status
         $payment_status = $listings_api->get_payment_status($post->ID);
@@ -359,40 +362,46 @@ class WPBDP_Admin {
             echo '</dd>';
             echo '<dt>' . _x('Featured (Sticky) Status', 'admin infometabox', 'WPBDM') . '</dt>';
             echo '<dd>';
+
                 // sticky information
-                $sticky_status = $listings_api->get_sticky_status($post->ID);
-                $status_string = '';
+                $sticky_info = $upgrades_api->get_info( $post->ID );
 
-                if ($sticky_status == 'sticky')
-                    $status_string = _x('Featured', 'admin metabox', 'WPBDM');
-                elseif ($sticky_status == 'pending')
-                    $status_string = _x('Pending Upgrade', 'admin metabox', 'WPBDM');
-                else
-                    $status_string = _x('Normal', 'admin metabox', 'WPBDM');
-
-                echo '<span><b>' . $status_string . '</b> </span>';
-                
-                if ($sticky_status == 'sticky') {
-                    echo sprintf('<a href="%s">%s</a>',
-                                 add_query_arg('wpbdmaction', 'cancelfeatured'),
-                                 _x('Downgrade', 'admin metabox', 'WPBDM'));
+                echo '<span><b>';
+                if ($sticky_info->pending) {
+                    echo _x('Pending Upgrade', 'admin metabox', 'WPBDM');
                 } else {
-                    if (current_user_can('activate_plugins')) {
-                        echo sprintf('<a href="%s">%s</a>',
-                                     add_query_arg('wpbdmaction', 'upgradefeatured'),
-                                     __('Upgrade'));
+                    echo esc_attr( $sticky_info->level->name );
+                }
+                echo '</b> </span><br />';
+
+                if (current_user_can('administrator')) {
+                    if ( $sticky_info->upgradeable ) {
+                        echo sprintf('<span><a href="%s">%s</a></span>',
+                                     add_query_arg(array('wpbdmaction' => 'changesticky', 'u' => $sticky_info->upgrade->id, 'post' => $post->ID)),
+                                     '<b>↑</b> ' . sprintf(__('Upgrade to %s', 'WPBDM'), esc_attr($sticky_info->upgrade->name)) );
+                    }
+
+                    if ( $sticky_info->downgradeable ) {
+                        echo '<br />';
+                        echo sprintf('<span><a href="%s">%s</a></span>',
+                                     add_query_arg(array('wpbdmaction' => 'changesticky', 'u' => $sticky_info->downgrade->id, 'post' => $post->ID)),
+                                     '<b>↓</b> ' . sprintf(__('Downgrade to %s', 'WPBDM'), esc_attr($sticky_info->downgrade->name)) );                
                     }
                 }
+
             echo '</dd>';
         echo '</dl>';
-        if ($payment_status != 'paid')
-            echo sprintf('<a href="%s" class="button-primary">%s</a> ',
-                     add_query_arg('wpbdmaction', 'setaspaid'),
-                     _x('Mark listing as Paid', 'admin infometabox', 'WPBDM'));
-        else
-            echo sprintf('<a href="%s" class="button">%s</a>',
-                         add_query_arg('wpbdmaction', 'setasnotpaid'),
-                         _x('Mark listing as Not paid', 'admin infometabox', 'WPBDM'));
+
+        if (current_user_can('administrator')) {
+            if ($payment_status != 'paid')
+                echo sprintf('<a href="%s" class="button-primary">%s</a> ',
+                         add_query_arg('wpbdmaction', 'setaspaid'),
+                         _x('Mark listing as Paid', 'admin infometabox', 'WPBDM'));
+            else
+                echo sprintf('<a href="%s" class="button">%s</a>',
+                             add_query_arg('wpbdmaction', 'setasnotpaid'),
+                             _x('Mark listing as Not paid', 'admin infometabox', 'WPBDM'));
+        }
         echo '</div>';
 
         // Transactions
@@ -501,8 +510,9 @@ class WPBDP_Admin {
         $posts = is_array($_REQUEST['post']) ? $_REQUEST['post'] : array($_REQUEST['post']);
 
         $listings_api = wpbdp_listings_api();
+        $upgrades_api = wpbdp_listing_upgrades_api();
 
-        if (!current_user_can('activate_plugins'))
+        if (!current_user_can('administrator'))
             exit;
 
         switch ($action) {
@@ -542,10 +552,23 @@ class WPBDP_Admin {
                                         'WPBDM');
                 break;
 
+            case 'changesticky':
+                foreach ( $posts as $post_id ):
+                    $upgrades_api->set_sticky( $post_id, wpbdp_getv($_GET, 'u') );
+                endforeach;
+
+                $this->messages[] = _nx('The listing has been modified.',
+                                        'The listings have been modified.',
+                                        count($posts),
+                                        'admin',
+                                        'WPBDM');             
+
+                break;
+
             case 'upgradefeatured':
-                foreach ($posts as $post_id) {
-                    update_post_meta($post_id, '_wpbdp[sticky]', 'sticky');
-                }
+                foreach ( $posts as $post_id ):
+                    $upgrades_api->set_sticky( $post_id, 'sticky', true );
+                endforeach;
             
                 $this->messages[] = _nx('The listing has been upgraded.',
                                         'The listings have been upgraded.',
@@ -555,9 +578,9 @@ class WPBDP_Admin {
                 break;
 
             case 'cancelfeatured':
-                foreach ($posts as $post_id) {
-                    delete_post_meta($post_id, "_wpbdp[sticky]");
-                }
+                foreach ($posts as $post_id ):
+                    $upgrades_api->set_sticky( $post_id, 'normal' );
+                endforeach;
                 
                 $this->messages[] = _nx('The listing has been downgraded.',
                                         'The listings have been downgraded.',
@@ -595,7 +618,7 @@ class WPBDP_Admin {
                 break;
         }
 
-        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id'), $_SERVER['REQUEST_URI'] );
+        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id', 'u'), $_SERVER['REQUEST_URI'] );
     }
 
     public function _dropdown_users($output) {
@@ -748,7 +771,7 @@ class WPBDP_Admin {
 
         echo sprintf('<span class="status %s">%s</span>', $paid_status, strtoupper($paid_status));
 
-        if (current_user_can('activate_plugins')) {
+        if (current_user_can('administrator')) {
             echo sprintf('<div class="row-actions"><b>%s:</b> %s</div>', __('Set as', 'WPBDM'), $status_links);
         }
     }
@@ -756,35 +779,29 @@ class WPBDP_Admin {
     private function sticky_status_column() {
         global $post;
 
-        $listings_api = wpbdp_listings_api();
+        $upgrades_api = wpbdp_listing_upgrades_api();
+        $sticky_info = $upgrades_api->get_info( $post->ID );
 
-        $status = $listings_api->get_sticky_status($post->ID);
-
-        $status_string = '';
-        if ($status == 'sticky')
-            $status_string = __('Featured', 'WPBDM');
-        elseif ($status == 'pending')
-            $status_string = __('Pending Upgrade', 'WPBDM');
-        else
-            $status_string = _x('Normal', 'admin list', 'WPBDM');
-        
         echo sprintf('<span class="status %s">%s</span><br />',
-                    str_replace(' ', '', $status),
-                    $status_string);
+                    str_replace(' ', '', $sticky_info->status),
+                    $sticky_info->pending ? __('Pending Upgrade', 'WPBDM') : esc_attr($sticky_info->level->name) );
 
         echo '<div class="row-actions">';
 
-        if (current_user_can('administrator')) {
-            if ($status == 'sticky') {
+        if ( current_user_can('administrator') ) {
+            if ( $sticky_info->upgradeable ) {
                 echo sprintf('<span><a href="%s">%s</a></span>',
-                             add_query_arg(array('wpbdmaction' => 'cancelfeatured', 'post' => $post->ID)),
-                             '<b>↓</b> ' . __('Downgrade to Normal', 'WPBDM'));
-            } else {
-                echo sprintf('<span><a href="%s">%s</a></span>',
-                             add_query_arg(array('wpbdmaction' => 'upgradefeatured', 'post' => $post->ID)),
-                             '<b>↑</b> ' . __('Upgrade to Featured', 'WPBDM'));
+                             add_query_arg(array('wpbdmaction' => 'changesticky', 'u' => $sticky_info->upgrade->id, 'post' => $post->ID)),
+                             '<b>↑</b> ' . sprintf(__('Upgrade to %s', 'WPBDM'), esc_attr($sticky_info->upgrade->name)) );
+                echo '<br />';
             }
-        } elseif (current_user_can('contributor') && wpbdp_user_can('upgrade-to-sticky', $post->ID)) {
+
+            if ( $sticky_info->downgradeable ) {
+                echo sprintf('<span><a href="%s">%s</a></span>',
+                             add_query_arg(array('wpbdmaction' => 'changesticky', 'u' => $sticky_info->downgrade->id, 'post' => $post->ID)),
+                             '<b>↓</b> ' . sprintf(__('Downgrade to %s', 'WPBDM'), esc_attr($sticky_info->downgrade->name)) );                
+            }
+        } elseif ( current_user_can('contributor') && wpbdp_user_can( 'upgrade-to-sticky', $post->ID ) ) {
                 echo sprintf('<span><a href="%s"><b>↑</b> %s</a></span>', wpbdp_get_page_link('upgradetostickylisting', $post->ID), _x('Upgrade to Featured', 'admin actions', 'WPBDM'));            
         }
 

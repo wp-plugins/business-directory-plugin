@@ -156,11 +156,11 @@ class WPBDP_Settings {
         $g = $this->add_group('image', _x('Image', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'image', _x('Image Settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'allow-images', _x('Allow images?', 'admin settings', 'WPBDM'), 'boolean', true);
-        $this->add_setting($s, 'image-max-filesize', _x('Max Image File Size', 'admin settings', 'WPBDM'), 'text', '100000');
-        $this->add_setting($s, 'image-min-filesize', _x('Minimum Image File Size', 'admin settings', 'WPBDM'), 'text', '300');
+        $this->add_setting($s, 'image-max-filesize', _x('Max Image File Size (KB)', 'admin settings', 'WPBDM'), 'text', '10000');
+        // $this->add_setting($s, 'image-min-filesize', _x('Minimum Image File Size (KB)', 'admin settings', 'WPBDM'), 'text', '50');
         $this->add_setting($s, 'image-max-width', _x('Max image width', 'admin settings', 'WPBDM'), 'text', '500');
         $this->add_setting($s, 'image-max-height', _x('Max image height', 'admin settings', 'WPBDM'), 'text', '500');
-        $this->add_setting($s, 'thumbnail-width', _x('Thumbnail width', 'admin settings', 'WPBDM'), 'text', '120');
+        $this->add_setting($s, 'thumbnail-width', _x('Thumbnail width', 'admin settings', 'WPBDM'), 'text', '150');
 
         $s = $this->add_section($g, 'listings', _x('Listings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'free-images', _x('Number of free images', 'admin settings', 'WPBDM'), 'text', '2');

@@ -173,7 +173,7 @@ function wpbdp_get_listing_field_html_value($listing, $field) {
                 return sprintf('<a href="%s">%s</a>', get_permalink($listing->ID), get_the_title($listing->ID));
                 break;
             case 'excerpt':
-                return apply_filters('get_the_excerpt', $listing->post_excerpt);
+                return apply_filters('get_the_excerpt', wpautop($listing->post_excerpt, true));
                 break;
             case 'content':
                 return apply_filters('the_content', $listing->post_content);
@@ -193,6 +193,12 @@ function wpbdp_get_listing_field_html_value($listing, $field) {
                         return esc_attr(str_replace("\t", ', ', $value));
                     } elseif ($field->type == 'textarea') {
                         return wpautop(wp_kses($value, array()), true);
+                    } elseif ($field->type == 'social-twitter') {
+                        return _wpbdp_display_twitter_button($value, array('lang' => substr(get_bloginfo('language'), 0, 2)) );
+                    } elseif ($field->type == 'social-linkedin') {
+                        return _wpbdp_display_linkedin_button($value);
+                    } elseif ($field->type == 'social-facebook') {
+                        return _wpbdp_display_facebook_button($value);
                     } else {
                         if ($field->validator == 'URLValidator') {
                             if (is_array($value)) {
@@ -202,6 +208,9 @@ function wpbdp_get_listing_field_html_value($listing, $field) {
                                 $value_url = $value;
                                 $value_text = $value;
                             }
+
+                            if (!$value_url)
+                                return '';
 
                             return sprintf('<a href="%s" rel="no follow" target="%s" title="%s">%s</a>',
                                            esc_url($value_url),
@@ -256,6 +265,10 @@ function wpbdp_payments_api() {
 /* Listings API */
 function wpbdp_listings_api() {
     return wpbdp()->listings;
+}
+
+function wpbdp_listing_upgrades_api() {
+    return wpbdp()->listings->upgrades;
 }
 
 /* Misc. */
@@ -430,9 +443,17 @@ function _wpbdp_render_single() {
                         the_title(null, null, false));
 
     $listing_fields = '';
+    $social_fields = '';
+
     foreach (wpbdp_get_formfields() as $field) {
-        if ($field->display_options['show_in_listing'])
-            $listing_fields .= wpbdp_format_field_output($field, null, $post);
+        if ($field->display_options['show_in_listing']) {
+            // show social links as images only
+            if (in_array( $field->type, array('social-twitter', 'social-facebook', 'social-linkedin') )) {
+                $social_fields .= wpbdp_get_listing_field_html_value($post->ID, $field);
+            } else {
+                $listing_fields .= wpbdp_format_field_output($field, null, $post);
+            }
+        }
     }
 
     // images
@@ -441,17 +462,21 @@ function _wpbdp_render_single() {
     $extra_images = array();
 
     foreach ($images as $img) {
+        // create thumbnail of correct size if needed (only in single view to avoid consuming server resources)
+        _wpbdp_resize_image_if_needed( $img->ID );
+
         if ($img->ID == $thumbnail_id) continue;
 
-        $medium_img = image_downsize($img->ID, 'medium');
-        $medium_url = $medium_img[0];
+        $full_image_data = wp_get_attachment_image_src( $img->ID, 'wpbdp-large', false );
+        $full_image_url = $full_image_data[0];
 
-        $extra_images[] = sprintf('<a href="%s" class="thickbox lightbox" rel="lightbox"><img class="wpbdp-thumbnail size-thumbnail " src="%s" alt="%s" title="%s" border="0" /></a>',
-                                    /*wp_get_attachment_url($img->ID),*/
-                                    $medium_url,
-                                    wp_get_attachment_thumb_url($img->ID),
-                                    the_title(null, null, false),
-                                    the_title(null, null, false));
+        $extra_images[] = sprintf('<a href="%s" class="thickbox lightbox" rel="lightbox" target="_blank">%s</a>',
+                                    $full_image_url,
+                                    wp_get_attachment_image( $img->ID, 'wpbdp-thumb', false, array(
+                                        'class' => 'wpbdp-thumbnail size-thumbnail',
+                                        'alt' => the_title(null, null, false),
+                                        'title' => the_title(null, null, false)
+                                    ) ));
     }
 
     $vars = array(
@@ -465,12 +490,20 @@ function _wpbdp_render_single() {
     );
 
     $html .= wpbdp_render('businessdirectory-listing', $vars, true);
-    $html .= apply_filters('wpbdp_listing_view_after', '', $post->ID, 'single');
-    $html .= wpbdp_capture_action('wpbdp_after_single_view', $post->ID);    
 
-    $html .= '<div class="contact-form">';
-    $html .= wpbusdirman_contactform(null,$post->ID,$commentauthorname='',$commentauthoremail='',$commentauthorwebsite='',$commentauthormessage='',$wpbusdirman_contact_form_errors='');
-    $html .= '</div>';
+    $social_fields = apply_filters('wpbdp_single_social_fields', $social_fields, $post->ID);
+    if ($social_fields)
+        $html .= '<div class="social-fields cf">' . $social_fields . '</div>';
+
+    $html .= apply_filters('wpbdp_listing_view_after', '', $post->ID, 'single');
+    $html .= wpbdp_capture_action('wpbdp_after_single_view', $post->ID);
+
+    $show_contact_form = apply_filters('wpbdp_show_contact_form', wpbdp_get_option('show-contact-form'), $post->ID);
+    if ($show_contact_form) {
+        $html .= '<div class="contact-form">';
+        $html .= wpbusdirman_contactform(null,$post->ID,$commentauthorname='',$commentauthoremail='',$commentauthorwebsite='',$commentauthormessage='',$wpbusdirman_contact_form_errors='');
+        $html .= '</div>';
+    }
 
     if (wpbdp_get_option('show-comment-form')) {
         $html .= '<div class="comments">';
@@ -501,12 +534,20 @@ function _wpbdp_render_excerpt() {
                      ($counter & 1) ? 'odd':  'even');
     $html .= wpbdp_capture_action('wpbdp_before_excerpt_view', $post->ID);
 
+    $social_fields = '';
     $listing_fields = '';
+    
     foreach (wpbdp_get_formfields() as $field) {
         if (!$field->display_options['show_in_excerpt'])
             continue;
 
-        $listing_fields .= wpbdp_format_field_output($field, null, $post);
+        // show social links as images only
+        if (in_array( $field->type, array('social-twitter', 'social-facebook', 'social-linkedin') )) {
+            $social_fields .= wpbdp_get_listing_field_html_value($post->ID, $field);
+        } else {
+            $listing_fields .= wpbdp_format_field_output($field, null, $post);
+        }
+
     }
 
     $vars = array(
@@ -517,6 +558,11 @@ function _wpbdp_render_excerpt() {
     );
 
     $html .= wpbdp_render('businessdirectory-excerpt', $vars, true);
+
+    $social_fields = apply_filters('wpbdp_excerpt_social_fields', $social_fields, $post->ID);
+    if ($social_fields)
+        $html .= '<div class="social-fields cf">' . $social_fields . '</div>';
+
     $html .= wpbdp_capture_action('wpbdp_after_excerpt_view', $post->ID);
     $html .= wpbdp_render('parts/listing-buttons', array('listing_id' => $post->ID, 'view' => 'excerpt'), false);
     $html .= '</div>';
@@ -592,9 +638,11 @@ function wpbdp_user_can($action, $listing_id=null, $user_id=null) {
             return user_can($user_id, 'administrator') || ($post->post_author == $user_id);
             break;
         case 'upgrade-to-sticky':
-            if (wpbdp_listings_api()->get_sticky_status($listing_id) == 'normal')
-                return user_can($user_id, 'administrator') || ($post->post_author == $user_id);
-            return false;
+            if (!wpbdp_get_option('featured-on'))
+                return false;
+
+            $sticky_info = wpbdp_listing_upgrades_api()->get_info( $listing_id );
+            return $sticky_info->upgradeable && (user_can($user_id, 'administrator') || ($post->post_author == $user_id));
             break;
     }
 
@@ -634,4 +682,28 @@ function wpbdp_get_current_sort_option() {
     }
 
     return null;
+}
+
+/*
+ * @since 2.1.6
+ */
+function wpbdp_listing_form_register_section($id, $section=array()) {
+    return wpbdp()->controller->register_listing_form_section($id, $section);
+}
+
+/*
+ * @since 2.1.6
+ */
+function _wpbdp_resize_image_if_needed($id) {
+    require_once( ABSPATH . 'wp-admin/includes/image.php' );
+
+    if ( $metadata = wp_get_attachment_metadata( $id ) ) {
+        if ( !isset( $metadata['sizes']['wpbdp-thumb'] ) || !isset( $metadata['sizes']['wpbdp-thumb'] ) || 
+            (isset($metadata['sizes']['wpbdp-thumb']) && (abs( intval($metadata['sizes']['wpbdp-thumb']['width']) - intval( wpbdp_get_option( 'thumbnail-width' ) ) ) >= 15) ) ) {
+            wpbdp_log( sprintf( 'Re-creating thumbnails for attachment %d', $id ) );
+            $filename = get_attached_file($id, true);
+            $attach_data = wp_generate_attachment_metadata( $id, $filename );
+            wp_update_attachment_metadata( $id,  $attach_data );
+        }
+    }
 }

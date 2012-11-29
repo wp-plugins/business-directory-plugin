@@ -275,7 +275,12 @@ class WPBDP_FormFieldsAPI {
                        'textarea' => _x('Textarea', 'form-fields api', 'WPBDM'),
                        'radio' => _x('Radio button', 'form-fields api', 'WPBDM'),
                        'multiselect' => _x('Multiple select list', 'form-fields api', 'WPBDM'),
-                       'checkbox' => _x('Checkbox', 'form-fields api', 'WPBDM'));
+                       'checkbox' => _x('Checkbox', 'form-fields api', 'WPBDM'),
+                       '' => '—',
+                       'social-twitter' => _x('Social Site (Twitter handle)', 'form-fields api', 'WPBDM'),
+                       'social-facebook' => _x('Social Site (Facebook page)', 'form-fields api', 'WPBDM'),
+                       'social-linkedin' => _x('Social Site (LinkedIn profile)', 'form-fields api', 'WPBDM'),
+                       );
 
         if ($key)
             return $types[$key];
@@ -422,7 +427,7 @@ class WPBDP_FormFieldsAPI {
         if (!isset($field['label']) || trim($field['label']) == '')
             $errors[] = _x('Field label is required.', 'form-fields-api', 'WPBDM');
 
-        if (!isset($field['type']) || !in_array($field['type'], array_keys($this->getFieldTypes())))
+        if (!isset($field['type']) || empty($field['type']) || !in_array($field['type'], array_keys($this->getFieldTypes())))
             $errors[] = _x('Invalid field type.', 'form-fields-api', 'WPBDM');
 
         if (!isset($field['association']) || !in_array($field['association'], array_keys($this->getFieldAssociations()))) {
@@ -502,7 +507,8 @@ class WPBDP_FormFieldsAPI {
             $field['is_required'] = 0;
         }
 
-        if (in_array($field['association'], array('title', 'category', 'content')))
+        // if (in_array($field['association'], array('title', 'category', 'content')))
+        if (in_array($field['association'], array('title', 'category')))
             $field['is_required'] = 1;
 
         if (isset($field['display_options'])) {
@@ -579,7 +585,7 @@ class WPBDP_FormFieldsAPI {
             $html .= sprintf('<div class="search-filter %s">', $field->type);
             $html .= sprintf('<div class="label"><label>%s</label></div>', esc_attr($field->label));
             $html .= '<div class="field">';
-            $html .= call_user_func(array($this, 'render_' . $field->type), $field, $value, $display_context);
+            $html .= call_user_func(array($this, 'render_' . str_replace('-', '_', $field->type)), $field, $value, $display_context);
             $html .= '</div>';
             $html .= '</div>';
 
@@ -594,7 +600,7 @@ class WPBDP_FormFieldsAPI {
 
             $html .= '</div>';
             $html .= '<div class="wpbdp-form-field-html">';
-            $html .= call_user_func(array($this, 'render_' . $field->type), $field, $value, $display_context);
+            $html .= call_user_func(array($this, 'render_' . str_replace('-', '_', $field->type) ), $field, $value, $display_context);
             $html .= '</div>';
 
             $html .= '</div>';
@@ -794,6 +800,18 @@ class WPBDP_FormFieldsAPI {
         $html .= '<div style="clear:both;"></div>';
 
         return $html;
+    }
+
+    public function render_social_twitter(&$field, $value=null, $display_context=null) {
+        return $this->render_textfield($field, $value, $display_context);
+    }
+
+    public function render_social_linkedin(&$field, $value=null, $display_context=null) {
+        return $this->render_textfield($field, $value, $display_context);
+    }
+
+    public function render_social_facebook(&$field, $value=null, $display_context=null) {
+        return $this->render_textfield($field, $value, $display_context);
     }
 
     /*
