@@ -126,8 +126,6 @@ Version 2.1.6
     
    9. When uploading images at the submit/edit listing form useful errors are now displayed. This happens when images are of a bigger size than allowed or are not really image files. Previously, it wasn't clear why an upload could fail.
    
-   10. Field labels are now hideable
-   
    11. Long description can now be set to Optional, required fields that can't be changed have disabled checkbox shown
    
    12. Empty URL field labels are not displayed
