@@ -145,11 +145,11 @@ class WPBDP_FeesAPI {
         if (!$fee['categories']['categories'])
             $fee['categories']['all'] = true;
 
-        // TODO delete unnecessary categories: if a parent of a category is in the list, remove the category
-
-        $fee['categories'] = serialize($fee['categories']);
+        // TODO: delete unnecessary categories: if a parent of a category is in the list, remove the category
 
         if ($this->is_valid_fee($fee, $errors)) {
+            $fee['categories'] = serialize($fee['categories']);
+            
             if (isset($fee['id'])) {
                 return $wpdb->update("{$wpdb->prefix}wpbdp_fees", $fee, array('id' => $fee['id'])) !== false;
             } else {
@@ -264,6 +264,13 @@ class WPBDP_PaymentsAPI {
     }
 
     public function check_config() {
+        if (wpbdp_get_option('featured-on') && !wpbdp_get_option('payments-on')) {
+            return array(
+                sprintf(_x('You are offering featured listings but have payments turned off. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the <i>Upgrade to Featured</i> option will be disabled.', 'payments-api', 'WPBDM'),
+                        '')
+            );
+        }
+
         if (!wpbdp_get_option('payments-on'))
             return array();
 
@@ -306,7 +313,8 @@ class WPBDP_PaymentsAPI {
     public function render_payment_page($options_) {
         $options = array_merge(array(
             'title' => _x('Checkout', 'payments-api', 'WPBDM'),
-            'item_text' => _x('Pay %1$s through %2$s', 'payments-api', 'WPBDM')
+            'item_text' => _x('Pay %1$s through %2$s', 'payments-api', 'WPBDM'),
+            'return_link' => null
         ), $options_);
 
         $transaction = $this->get_transaction($options['transaction_id']);
@@ -315,7 +323,8 @@ class WPBDP_PaymentsAPI {
             'title' => $options['title'],
             'item_text' => $options['item_text'],
             'transaction' => $transaction,
-            'payment_methods' => $this->get_available_methods()
+            'payment_methods' => $this->get_available_methods(),
+            'return_link' => $options['return_link']
             ));
     }
 
