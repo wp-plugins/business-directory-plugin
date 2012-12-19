@@ -33,6 +33,15 @@ class WPBDP_ListingUpgrades {
     /*
      * General functions.
      */
+    public function get_levels() {
+        $res = array();
+
+        foreach ($this->_order as $level_id) {
+            $res[] = $this->get($level_id);
+        }
+
+        return $res;
+    }
 
     public function register($upgrade_id, $after_id, $data) {
         if ( !isset($this->_levels) )
@@ -44,8 +53,8 @@ class WPBDP_ListingUpgrades {
         if ( empty($upgrade_id) )
             return false;
 
-        if ( $upgrade_id != 'normal' && (!$after_id || !in_array( $after_id, array_keys ($this->_levels) )) )
-            $after_id = 'normal';
+       if ( $upgrade_id != 'normal' && (!$after_id || !in_array( $after_id, array_keys ($this->_levels) )) )
+            $after_id = end ( $this->_order );
 
         $data = array_merge(array(
             'name' => $upgrade_id,
@@ -75,7 +84,8 @@ class WPBDP_ListingUpgrades {
 
         if ($obj->downgrade) {
             $down_key = array_search($obj->downgrade, $this->_order);
-            $this->_order = array_merge( array_splice($this->_order, max(0, $down_key - 1)), array($obj->id), $this->_order );
+
+            array_splice($this->_order, max(0, $down_key + 1), 0, array($obj->id));
         } else {
             $this->_order[] = $upgrade_id;
         }
@@ -96,6 +106,29 @@ class WPBDP_ListingUpgrades {
         if ($u = $this->get($upgrade_id))
             return $u->upgrade;
         return null;
+    }
+
+    /**
+     * Generates a unique level id from a given name. Useful for plugins extending functionality the
+     * number of featured levels.
+     * @since 2.1.7
+     */
+    public function unique_id($name) {
+        $key = sanitize_key( $name );
+
+        if ( !in_array( $key, $this->_order ) )
+            return $key;
+
+        $n = 0;
+        while ( true ) {
+            $key = $key . strval( $n );
+
+            if ( !in_array( $key, $this->_order ) )
+                return $key;
+
+            $n += 1;
+        }
+
     }
 
     /*
@@ -298,11 +331,24 @@ class WPBDP_ListingsAPI {
 
     }
 
+    // TODO
     public function get_expired_listings($category_id, $include_subcategories=true) {
         global $wpdb;
 
-        $category_ids = array_merge(array($category_id), get_term_children($category_id, wpbdp_categories_taxonomy()));
-        $categories_str = '(' . implode(',', $category_ids) . ')';
+        $current_date = current_time('mysql');
+
+        // $category_ids = array_merge(array($category_id), get_term_children($category_id, wpbdp_categories_taxonomy()));
+        // $expired = array();
+
+        // foreach ($category_ids as $cid) {
+        //     $expired[$cid] = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT listing_id FROM {$wpdb->prefix}wpbdp_listing_fees WHERE category_id = %d AND expires_on IS NOT NULL AND expires_on < %s", $cid, $current_date ) );
+        // }
+
+        // wpbdp_debug_e( $expired );
+
+        return array();
+
+/*        $categories_str = '(' . implode(',', $category_ids) . ')';
 
         $current_date = current_time('mysql');
 
@@ -312,7 +358,7 @@ class WPBDP_ListingsAPI {
 
         $excluded_ids = $wpdb->get_col($query);
 
-        return $excluded_ids;
+        return $excluded_ids;*/
     }
 
     public function assign_fee($listing_id, $category_id, $fee_id, $charged=false) {
@@ -652,6 +698,8 @@ class WPBDP_ListingsAPI {
             'listing_id' => $listing_id
         ));
         update_post_meta($listing_id, '_wpbdp[payment_status]', !current_user_can('administrator') && ($cost > 0.0) ? 'not-paid' : 'paid');
+
+        do_action('wpbdp_add_listing', $listing_id, $listingfields);
 
         return $listing_id;
     }

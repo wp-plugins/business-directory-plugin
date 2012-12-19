@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 2.1.6.1
+Version: 2.2
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -119,7 +119,7 @@ require_once(WPBDP_PATH . 'widgets.php');
 
 class WPBDP_Plugin {
 
-    const VERSION = '2.1.6.1';
+    const VERSION = '2.2';
     const DB_VERSION = '3.1';
 
     const POST_TYPE = 'wpbdp_listing';
@@ -348,7 +348,10 @@ class WPBDP_Plugin {
     }
 
     public function init() {
+        // add_option('wpbdp-debug-on', true);
         if (get_option('wpbdp-debug-on', false)) $this->debug_on();
+
+        wpbdp_log('WPBDP_Plugin::init()');
 
         $this->settings = new WPBDP_Settings();
         $this->formfields = new WPBDP_FormFieldsAPI();
@@ -748,6 +751,10 @@ class WPBDP_Plugin {
                 break;
 
             case 'browsecategory':
+                // XXX: for some reason this part is executed even when we are not seeing a BD category
+                // that causes the title of that pages to be empty or to include a PHP Notice.
+                // try placing an Ad in AWPCP using the frontend screens, having BD enabled.
+                // ~wvega
                 $term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy());
                 if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), wpbdp_categories_taxonomy());
 
