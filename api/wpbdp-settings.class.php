@@ -17,9 +17,9 @@ class WPBDP_Settings {
         /* General settings */
         $g = $this->add_group('general', _x('General', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'permalink', _x('Permalink Settings', 'admin settings', 'WPBDM'));
-        $this->add_setting($s, 'permalinks-directory-slug', _x('Directory Listings Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE, null, null, array($this, '_validate_listings_permalink'));
-        $this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_CATEGORY, _x('The slug can\'t be in use by another term. Avoid "category", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
-        $this->add_setting($s, 'permalinks-tags-slug', _x('Tags Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_Plugin::POST_TYPE_TAGS, _x('The slug can\'t be in use by another term. Avoid "tag", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
+        $this->add_setting($s, 'permalinks-directory-slug', _x('Directory Listings Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_POST_TYPE, null, null, array($this, '_validate_listings_permalink'));
+        $this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_CATEGORY_TAX, _x('The slug can\'t be in use by another term. Avoid "category", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
+        $this->add_setting($s, 'permalinks-tags-slug', _x('Tags Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_TAGS_TAX, _x('The slug can\'t be in use by another term. Avoid "tag", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
 
         $s = $this->add_section($g, 'recaptcha', _x('reCAPTCHA Settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'recaptcha-on', _x('Use reCAPTCHA for contact forms', 'admin settings', 'WPBDM'), 'boolean', false);
@@ -56,6 +56,7 @@ class WPBDP_Settings {
                            array('choices' => array('draft', 'trash')));
 
         $s = $this->add_section($g, 'listings/email', _x('Listing email settings', 'admin settings', 'WPBDM'));
+        $this->add_setting( $s, 'notify-admin', _x( 'Notify admin of new listings via email?', 'admin settings', 'WPBDM' ), 'boolean', false );
         $this->add_setting($s, 'send-email-confirmation', _x('Send email confirmation to listing owner when listing is submitted?', 'admin settings', 'WPBDM'), 'boolean', false);
         $this->add_setting($s, 'email-confirmation-message', _x('Email confirmation message', 'admin settings', 'WPBDM'), 'text',
                            'Your submission \'[listing]\' has been received and it\'s pending review. This review process could take up to 48 hours.',
@@ -88,6 +89,7 @@ class WPBDP_Settings {
 
         $s = $this->add_section($g, 'featured', _x('Featured (Sticky) listing settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'featured-on', _x('Offer sticky listings?', 'admin settings', 'WPBDM'), 'boolean', true);
+        $this->add_setting($s, 'featured-offer-in-submit', _x('Offer upgrades during submit process?', 'admin settings', 'WPBDM'), 'boolean', false);
         $this->add_setting($s, 'featured-price', _x('Sticky listing price', 'admin settings', 'WPBDM'), 'text', '39.99');
         $this->add_setting($s, 'featured-description', _x('Sticky listing page description text', 'admin settings', 'WPBDM'), 'text',
                            _x('You can upgrade your listing to featured status. Featured listings will always appear on top of regular listings.', 'admin settings', 'WPBDM'));
@@ -114,7 +116,7 @@ class WPBDP_Settings {
                                 array('MYR', _x('Malasian Ringgit (MYR)', 'admin settings', 'WPBDM')),
                                 array('MXN', _x('Mexican Peso (MXN)', 'admin settings', 'WPBDM')),
                                 array('NOK', _x('Norwegian Krone (NOK)', 'admin settings', 'WPBDM')),
-                                array('NZD', _x('New Zelland Dollar (NZD)', 'admin settings', 'WPBDM')),
+                                array('NZD', _x('New Zealand Dollar (NZD)', 'admin settings', 'WPBDM')),
                                 array('PHP', _x('Philippine Peso (PHP)', 'admin settings', 'WPBDM')),
                                 array('PLN', _x('Polish Zloty (PLN)', 'admin settings', 'WPBDM')),
                                 array('GBP', _x('Pound Sterling (GBP)', 'admin settings', 'WPBDM')),
@@ -161,6 +163,7 @@ class WPBDP_Settings {
         $this->add_setting($s, 'image-max-width', _x('Max image width', 'admin settings', 'WPBDM'), 'text', '500');
         $this->add_setting($s, 'image-max-height', _x('Max image height', 'admin settings', 'WPBDM'), 'text', '500');
         $this->add_setting($s, 'thumbnail-width', _x('Thumbnail width', 'admin settings', 'WPBDM'), 'text', '150');
+        $this->add_setting( $s, 'use-thickbox', _x( 'Turn on thickbox/lightbox?', 'admin settings', 'WPBDM' ), 'boolean', false, _x( 'Uncheck if it conflicts with other elements or plugins installed on your site', 'admin settings', 'WPBDM' ) );
 
         $s = $this->add_section($g, 'listings', _x('Listings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'free-images', _x('Number of free images', 'admin settings', 'WPBDM'), 'text', '2');
@@ -173,7 +176,7 @@ class WPBDP_Settings {
     }
 
     public function _validate_term_permalink($setting, $newvalue, $oldvalue=null) {
-        $bd_taxonomy = $setting->name == 'permalinks-category-slug' ? wpbdp()->get_post_type_category() : wpbdp()->get_post_type_tags();
+        $bd_taxonomy = $setting->name == 'permalinks-category-slug' ? WPBDP_CATEGORY_TAX : WPBDP_TAGS_TAX;
         foreach (get_taxonomies(null, 'objects') as $taxonomy) {
             if ($taxonomy->rewrite && $taxonomy->rewrite['slug'] == $newvalue && $taxonomy->name != $bd_taxonomy) {
                 return $oldvalue;

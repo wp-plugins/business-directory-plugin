@@ -169,52 +169,6 @@ class WPBDP_FeesAPI {
         $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_fees WHERE id = %d", $id));
 
         return true;
-    }    
-
-    public function _update_to_2_3() {
-        global $wpdb;
-
-        $count = $wpdb->get_var(
-            sprintf("SELECT COUNT(*) FROM {$wpdb->prefix}options WHERE option_name LIKE '%%%s%%'", 'wpbusdirman_settings_fees_label_'));
-
-        for ($i = 1; $i <= $count; $i++) {
-            $label = get_option('_settings_fees_label_' . $i, get_option('wpbusdirman_settings_fees_label_' . $i));
-            $amount = get_option('_settings_fees_amount' . $i, get_option('wpbusdirman_settings_fees_amount_' . $i, '0.00'));
-            $days = intval( get_option('_settings_fees_increment_' . $i, get_option('wpbusdirman_settings_fees_increment_' . $i, 0)) );
-            $images = intval( get_option('_settings_fees_images_' . $i, get_option('wpbusdirman_settings_fees_images_' . $i, 0)) );
-            $categories = get_option('_settings_fees_categories_' . $i, get_option('wpbusdirman_settings_fees_categories_' . $i, ''));
-
-            $newfee = array();
-            $newfee['label'] = $label;
-            $newfee['amount'] = $amount;
-            $newfee['days'] = $days;
-            $newfee['images'] = $images;
-
-            $category_data = array('all' => false, 'categories' => array());
-            if ($categories == '0') {
-                $category_data['all'] = true;
-            } else {
-                foreach (explode(',', $categories) as $category_id) {
-                    $category_data['categories'][] = intval($category_id);
-                }
-            }
-            
-            $newfee['categories'] = serialize($category_data);
-
-            if ($wpdb->insert($wpdb->prefix . 'wpbdp_fees', $newfee)) {
-                $new_id = $wpdb->insert_id;
-
-                $query = $wpdb->prepare("UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE meta_key = %s AND meta_value = %s AND {$wpdb->postmeta}.post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_type = %s)",
-                                         $new_id, '_wpbdp_listingfeeid', $i, 'wpbdm-directory');
-                $wpdb->query($query);
-
-                foreach (array('label', 'amount', 'increment', 'images', 'categories') as $k) {
-                    delete_option('wpbusdirman_settings_fees_' . $k . '_' . $i);
-                    delete_option('_settings_fees_' . $k . '_' . $i);
-                }
-            }
-
-        }
     }
 
 }
@@ -266,8 +220,7 @@ class WPBDP_PaymentsAPI {
     public function check_config() {
         if (wpbdp_get_option('featured-on') && !wpbdp_get_option('payments-on')) {
             return array(
-                sprintf(_x('You are offering featured listings but have payments turned off. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the <i>Upgrade to Featured</i> option will be disabled.', 'payments-api', 'WPBDM'),
-                        '')
+                sprintf(_x('You are offering featured listings but have payments turned off. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the <i>Upgrade to Featured</i> option will be disabled.', 'payments-api', 'WPBDM'), admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment') )
             );
         }
 
@@ -319,6 +272,10 @@ class WPBDP_PaymentsAPI {
 
         $transaction = $this->get_transaction($options['transaction_id']);
 
+        if ( $transaction->status == 'approved' || $transaction->amount == 0.0 ) {
+            return wpbdp_render_msg( _x('Your transaction has been approved.', 'payments-api', 'WPBDM' ) );
+        }
+
         return wpbdp_render('payment-page', array(
             'title' => $options['title'],
             'item_text' => $options['item_text'],
@@ -367,6 +324,10 @@ class WPBDP_PaymentsAPI {
 
         if ($transaction->id == $this->get_last_transaction($transaction->listing_id)->id) {
             update_post_meta($transaction->listing_id, '_wpbdp[payment_status]', $transaction->status == 'approved' ? 'paid' : 'not-paid');
+
+            if ( $transaction->status == 'approved' ) {
+                wp_update_post( array( 'ID' => $transaction->listing_id, 'post_status' => wpbdp_get_option( 'new-post-status' ) ) );
+            }
         }
 
         if ($transaction->status == 'approved') {

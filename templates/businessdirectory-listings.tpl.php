@@ -4,7 +4,10 @@
     <?php if (!isset($excludebuttons)) $excludebuttons = true; ?>
 
     <?php if (!$excludebuttons): ?>
-        <?php wpbdp_the_bar(array('search' => true)); ?>
+        <div class="wpbdp-bar cf">
+            <?php wpbdp_the_main_links(); ?>
+            <?php wpbdp_the_search_form(); ?>
+        </div>
     <?php endif; ?>
 
     <?php echo $__page__['before_content']; ?>
@@ -27,8 +30,8 @@
                 <?php elseif (function_exists('wp_paginate')): ?>
                         <?php wp_paginate(); ?>
                 <?php else: ?>
-                    <span class="next"><?php previous_posts_link(_x('&laquo; Previous ', 'templates', 'WPBDM')); ?></span>
-                    <span class="prev"><?php next_posts_link(_x('Next &raquo;', 'templates', 'WPBDM')); ?></span>
+                    <span class="prev"><?php previous_posts_link(_x('&laquo; Previous ', 'templates', 'WPBDM')); ?></span>
+                    <span class="next"><?php next_posts_link(_x('Next &raquo;', 'templates', 'WPBDM')); ?></span>
                 <?php endif; ?>
                 </div>
             </div>

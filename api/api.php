@@ -9,23 +9,21 @@ function wpbdp() {
 }
 
 function wpbdp_get_version() {
-    return wpbdp()->get_version();
+    return WPBDP_VERSION;
 }
 
-function wpbdp_get_db_version() {
-    return wpbdp()->get_db_version();
-}
-
+/**
+ * @deprecated since 2.3
+ */
 function wpbdp_post_type() {
-    return wpbdp()->get_post_type();
+    return WPBDP_POST_TYPE;
 }
 
+/**
+ * @deprecated since 2.3
+ */
 function wpbdp_categories_taxonomy() {
-    return wpbdp()->get_post_type_category();
-}
-
-function wpbdp_tags_taxonomy() {
-    return wpbdp()->get_post_type_tags();
+    return WPBDP_CATEGORY_TAX;
 }
 
 function wpbdp_get_page_id($name='main') {
@@ -33,7 +31,6 @@ function wpbdp_get_page_id($name='main') {
 
     static $shortcodes = array(
         'main' => array('businessdirectory', 'business-directory', 'WPBUSDIRMANUI'),
-        'showlisting' => array('businessdirectory', 'business-directory', 'WPBUSDIRMANUI'),
         'add-listing' => array('businessdirectory-submitlisting', 'WPBUSDIRMANADDLISTING'),
         'manage-listings' => array('businessdirectory-managelistings', 'WPBUSDIRMANMANAGELISTING'),
         'view-listings' => array('businessdirectory-viewlistings', 'businessdirectory-listings', 'WPBUSDIRMANMVIEWLISTINGS'),
@@ -56,29 +53,50 @@ function wpbdp_get_page_id($name='main') {
 }
 
 function wpbdp_get_page_link($name='main', $arg0=null) {
-    $main_page_id = wpbdp_get_page_id('main');
-    $page_id = wpbdp_get_page_id($name);
+    if ( $page_id = wpbdp_get_page_id( $name ) ) {
+        return _get_page_link( $page_id );
+    }
 
-    // wpbdp_debug_e(get_option('page_on_front'), $page_id);
-    // wpbdp_debug_e($main_page_id);
+    switch ( $name ) {
+        case 'view':
+        case 'viewlisting':
+        case 'show-listing':
+        case 'showlisting':
+            $link = get_permalink( intval( $arg0 ) );
+            break;
+        case 'edit':
+        case 'editlisting':
+        case 'edit-listing':
+        case 'delete':
+        case 'deletelisting':
+        case 'delete-listing':
+        case 'upgrade':
+        case 'upgradetostickylisting':
+        case 'upgradelisting':
+        case 'upgrade-listing':
+            $link = add_query_arg( array( 'action' => $name, 'listing_id' => intval( $arg0 ) ), wpbdp_get_page_link( 'main' ) );
+            break;
+        case 'viewlistings':
+        case 'view-listings':
+            $link = add_query_arg( array( 'action' => 'viewlistings' ), wpbdp_get_page_link( 'main' ) );
+            break;
+        case 'add':
+        case 'addlisting':
+        case 'add-listing':
+        case 'submit':
+        case 'submitlisting':
+        case 'submit-listing':
+            $link = add_query_arg( array( 'action' => 'submitlisting' ), wpbdp_get_page_link( 'main' ) );
+            break;
+        case 'search':
+            $link = add_query_arg( array( 'action' => 'search' ), wpbdp_get_page_link( 'main' ) );
+            break;
+        default:
+            $link = wpbdp_get_page_link( 'main' );
+            break;
+    }
 
-    if ($page_id)
-        return get_permalink($page_id);
-
-    if ($name == 'showlisting')
-        return add_query_arg('action', 'showlisting', get_permalink($main_page_id));
-
-    if ($name == 'editlisting' || $name == 'deletelisting' || $name == 'upgradetostickylisting')
-        return add_query_arg(array('action' => $name, 'listing_id' => $arg0),
-                             get_permalink($main_page_id));
-
-    if ($name == 'view-listings')
-        return add_query_arg('action', 'viewlistings', get_permalink($main_page_id));
-
-    if ($name == 'add-listing')
-        return add_query_arg('action', 'submitlisting', get_permalink($main_page_id));
-
-    return get_permalink($main_page_id);
+    return $link;
 }
 
 /* Admin API */
@@ -112,10 +130,6 @@ function wpbdp_formfields_api() {
     return $wpbdp->formfields;
 }
 
-function wpbdp_get_formfields() {
-    return wpbdp_formfields_api()->getFields();
-}
-
 function wpbdp_get_formfield($id) {
     if (is_numeric($id) && is_string($id))
         return wpbdp_get_formfield(intval($id));
@@ -123,127 +137,7 @@ function wpbdp_get_formfield($id) {
     if (is_string($id))
         return wpbdp_formfields_api()->getFieldsByAssociation($id, true);
 
-    return wpbdp_formfields_api()->getField($id);
-}
-
-function wpbdp_validate_value($validator, $value, &$errors=null) {
-    return wpbdp_formfields_api()->validate_value($validator, $value, $errors);
-}
-
-/* Listings */
-function wpbdp_get_listing_field_value($listing, $field) {
-    $listing = !is_object($listing) ? get_post($listing) : $listing;
-    $field = !is_object($field) ? wpbdp_get_formfield($field) : $field;
-    $value = null;
-
-    if ($listing && $field) {
-        switch ($field->association) {
-            case 'title':
-                $value = $listing->post_title;
-                break;
-            case 'excerpt':
-                $value = $listing->post_excerpt;
-                break;
-            case 'content':
-                $value = $listing->post_content;
-                break;
-            case 'category':
-                $value = get_the_terms($listing->ID, wpbdp()->get_post_type_category());
-                break;
-            case 'tags':
-                $value = get_the_terms($listing->ID, wpbdp()->get_post_type_tags());
-                break;
-            case 'meta':
-            default:
-                $value = get_post_meta($listing->ID, '_wpbdp[fields][' . $field->id . ']', true);
-                break;
-        }
-    }
-
-    return apply_filters('wpbdp_listing_field_value', $value, $listing, $field);
-}
-
-function wpbdp_get_listing_field_html_value($listing, $field) {
-    $listing = !is_object($listing) ? get_post($listing) : $listing;
-    $field = !is_object($field) ? wpbdp_get_formfield($field) : $field;
-    $value = null;
-
-    if ($listing && $field) {
-        switch ($field->association) {
-            case 'title':
-                $value = sprintf('<a href="%s">%s</a>', get_permalink($listing->ID), get_the_title($listing->ID));
-                break;
-            case 'excerpt':
-                $value = apply_filters('get_the_excerpt', wpautop($listing->post_excerpt, true));
-                break;
-            case 'content':
-                $value = apply_filters('the_content', $listing->post_content);
-                break;
-            case 'category':
-                $value = get_the_term_list($listing->ID, wpbdp()->get_post_type_category(), '', ', ', '' );
-                break;
-            case 'tags':
-                $value = get_the_term_list($listing->ID, wpbdp()->get_post_type_tags(), '', ', ', '' );
-                break;
-            case 'meta':
-            default:
-                $value = wpbdp_get_listing_field_value($listing, $field);
-
-                if ($value) {
-                    if (in_array($field->type, array('multiselect', 'checkbox'))) {
-                        $value = esc_attr(str_replace("\t", ', ', $value));
-                    } elseif ($field->type == 'textarea') {
-                        $value = wpautop(wp_kses($value, array()), true);
-                    } elseif ($field->type == 'social-twitter') {
-                        $value = _wpbdp_display_twitter_button($value, array('lang' => substr(get_bloginfo('language'), 0, 2)) );
-                    } elseif ($field->type == 'social-linkedin') {
-                        $value =_wpbdp_display_linkedin_button($value);
-                    } elseif ($field->type == 'social-facebook') {
-                        $value =_wpbdp_display_facebook_button($value);
-                    } else {
-                        if ($field->validator == 'URLValidator') {
-                            if (is_array($value)) {
-                                $value_url = $value[0];
-                                $value_text = !empty($value[1]) ? $value[1] : $value[0];
-                            } else {
-                                $value_url = $value;
-                                $value_text = $value;
-                            }
-
-                            if (!$value_url)
-                                return '';
-
-                            $value = sprintf('<a href="%s" rel="no follow" target="%s" title="%s">%s</a>',
-                                           esc_url($value_url),
-                                           isset($field->field_data['open_in_new_window']) && $field->field_data['open_in_new_window'] ? '_blank' : '_self',
-                                           esc_attr($value_text),
-                                           esc_attr($value_text));
-                        } else {
-                            $value = wp_kses($value, array());
-                        }
-                    }
-                }
-
-                break;
-        }
-    }
-
-    return apply_filters('wpbdp_listing_field_html_value', $value, $listing, $field);
-}
-
-function wpbdp_format_field_output($field, $value='', $listing=null) {
-    $field = !is_object($field) ? wpbdp_get_formfield($field) : $field;
-    $value = $listing ? wpbdp_get_listing_field_html_value($listing, $field) : $value;
-
-    if ($field->validator == 'EmailValidator' && !wpbdp_get_option('override-email-blocking'))
-        return '';
-
-    if ( $field && $value && ($field->display_options['show_in_excerpt'] || $field->display_options['show_in_listing']) )
-        return sprintf('<div class="field-value wpbdp-field-%s %s"><label>%s:</label> <span class="value">%s</span></div>',
-                       strtolower(str_replace(array(' ', '/'), '', $field->label)), /* normalized field label */
-                       $field->association,
-                       esc_attr($field->label),
-                       $value);
+    return wpbdp_formfields_api()->get_field($id);
 }
 
 /* Fees/Payment API */
@@ -378,7 +272,7 @@ function wpbdp_render($template, $vars=array(), $allow_override=true) {
             'before_content' => '')));
     $vars = apply_filters('wpbdp_template_vars', $vars, $template);
 
-    return wpbdp_render_page(wpbdp_locate_template($template, $allow_override), $vars, false);
+    return apply_filters( "wpbdp_render_{$template}", wpbdp_render_page(wpbdp_locate_template($template, $allow_override), $vars, false) );
 }
 
 function wpbdp_render_msg($msg, $type='status') {
@@ -439,7 +333,7 @@ function _wpbdp_render_single() {
 
     $sticky_status = wpbdp_listings_api()->get_sticky_status($post->ID);
 
-    $html .= sprintf('<div id="wpbdp-listing-%d" class="wpbdp-listing wpbdp-listing-single %s %s">', $post->ID, 'single', $sticky_status);
+    $html .= sprintf('<div id="wpbdp-listing-%d" class="wpbdp-listing wpbdp-listing-single %s %s" itemscope itemtype="http://schema.org/Thing">', $post->ID, 'single', $sticky_status);
     $html .= apply_filters('wpbdp_listing_view_before', '', $post->ID, 'single');
     $html .= wpbdp_capture_action('wpbdp_before_single_view', $post->ID);
 
@@ -450,17 +344,22 @@ function _wpbdp_render_single() {
                         _x('Featured Listing', 'templates', 'WPBDM'),
                         the_title(null, null, false));
 
+    $formfields_api = WPBDP_FormFields::instance();
+
     $listing_fields = '';
     $social_fields = '';
 
-    foreach (wpbdp_get_formfields() as $field) {
-        if ($field->display_options['show_in_listing']) {
-            // show social links as images only
-            if (in_array( $field->type, array('social-twitter', 'social-facebook', 'social-linkedin') )) {
-                $social_fields .= wpbdp_get_listing_field_html_value($post->ID, $field);
-            } else {
-                $listing_fields .= wpbdp_format_field_output($field, null, $post);
-            }
+    $ffields = wpbdp_get_form_fields();
+    $ffields = apply_filters_ref_array( 'wpbdp_get_form_fields', array( &$ffields, $post->ID ) ); // TODO: move this to wpbpd_get_form_fields() ?    
+
+    foreach ( $ffields as &$field ) {
+        if ( !$field->display_in( 'listing' ) )
+            continue;
+
+        if ( $field->display_in( 'social' ) ) {
+            $social_fields .= $field->display( $post->ID, 'social' );
+        } else {
+            $listing_fields .= $field->display( $post->ID, 'listing' );
         }
     }
 
@@ -492,7 +391,7 @@ function _wpbdp_render_single() {
         'is_sticky' => $sticky_status == 'sticky',
         'sticky_tag' => $sticky_tag,
         'title' => get_the_title(),
-        'main_image' => wpbusdirman_post_main_image(),
+        'main_image' => wpbdp_listing_thumbnail( null, 'link=picture&class=wpbdp-single-thumbnail' ),
         'listing_fields' => apply_filters('wpbdp_single_listing_fields', $listing_fields, $post->ID),
         'extra_images' => $extra_images
     );
@@ -509,7 +408,7 @@ function _wpbdp_render_single() {
     $show_contact_form = apply_filters('wpbdp_show_contact_form', wpbdp_get_option('show-contact-form'), $post->ID);
     if ($show_contact_form) {
         $html .= '<div class="contact-form">';
-        $html .= wpbusdirman_contactform(null,$post->ID,$commentauthorname='',$commentauthoremail='',$commentauthorwebsite='',$commentauthormessage='',$wpbusdirman_contact_form_errors='');
+        $html .= wpbdp_listing_contact_form();
         $html .= '</div>';
     }
 
@@ -542,25 +441,29 @@ function _wpbdp_render_excerpt() {
                      ($counter & 1) ? 'odd':  'even');
     $html .= wpbdp_capture_action('wpbdp_before_excerpt_view', $post->ID);
 
-    $social_fields = '';
+    $formfields_api = WPBDP_FormFields::instance();
+
     $listing_fields = '';
-    
-    foreach (wpbdp_get_formfields() as $field) {
-        if (!$field->display_options['show_in_excerpt'])
+    $social_fields = '';
+
+    $ffields = wpbdp_get_form_fields();
+    $ffields = apply_filters_ref_array( 'wpbdp_get_form_fields', array( &$ffields, $post->ID ) ); // TODO: move this to wpbpd_get_form_fields() ?
+
+    foreach ( $ffields as &$field) {
+        if ( !$field->display_in( 'excerpt' ) )
             continue;
 
-        // show social links as images only
-        if (in_array( $field->type, array('social-twitter', 'social-facebook', 'social-linkedin') )) {
-            $social_fields .= wpbdp_get_listing_field_html_value($post->ID, $field);
+        if ( $field->display_in( 'social' ) ) {
+            $social_fields .= $field->display( $post->ID, 'social' );
         } else {
-            $listing_fields .= wpbdp_format_field_output($field, null, $post);
+            $listing_fields .= $field->display( $post->ID, 'excerpt' );
         }
 
     }
 
     $vars = array(
         'is_sticky' => $sticky_status == 'sticky',
-        'thumbnail' => wpbusdirman_display_the_thumbnail(),
+        'thumbnail' => wpbdp_listing_thumbnail( null, 'link=listing&class=wpbdmthumbs wpbdp-excerpt-thumbnail' ),
         'title' => get_the_title(),
         'listing_fields' => apply_filters('wpbdp_excerpt_listing_fields', $listing_fields, $post->ID)
     );
@@ -660,10 +563,6 @@ function wpbdp_user_can($action, $listing_id=null, $user_id=null) {
     return false;
 }
 
-function _wpbdp_current_action() {
-    return wpbdp()->controller->get_current_action();
-}
-
 function wpbdp_get_post_by_slug($slug, $post_type=null) {
     $post_type = $post_type ? $post_type : wpbdp_post_type();
 
@@ -727,4 +626,13 @@ function wpbdp_format_currency($amount, $decimals=2) {
         return '—';
     
     return wpbdp_get_option( 'currency-symbol' ) . ' ' . number_format( $amount, $decimals );
+}
+
+
+/**
+ * @since 2.3
+ */
+function wpbdp_has_module( $module ) {
+    global $wpbdp;
+    return $wpbdp->has_module( $module );
 }

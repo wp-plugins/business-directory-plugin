@@ -52,7 +52,6 @@ form#wpbdmsearchform a.advanced-search-link {
 #wpbdp-search-form input[type="submit"] {
     width: 100px;
     float: none;
-    display: block;
     margin: auto;
 }
 
@@ -144,6 +143,7 @@ form#wpbdmsearchform a.advanced-search-link {
 
 .wpbdp-listing-single .stickytag {
     float: right;
+    margin-top: -20px;
 }
 
 .wpbdp-listing-single .listing-title {
@@ -276,13 +276,15 @@ form#wpbdmsearchform a.advanced-search-link {
     margin-bottom: 20px;
 }
 
-.wpbdp-main-page ul.wpbdp-categories {
+ul.wpbdp-categories {
     margin: 0 0 10px 15px;
+    padding: 0 10px;
 }
 
-.wpbdp-main-page ul.wpbdp-categories > li {
+ul.wpbdp-categories > li {
     width: 50%;
     float: left;
+    margin: 0;
 }
 
 /* submit listing page */
@@ -308,6 +310,10 @@ form#wpbdmsearchform a.advanced-search-link {
     font-size: 90%;
     margin-left: 10px;
     margin-right: 10px;
+}
+
+.wpbdp-form-field.image a.delete {
+    margin-left: 10px;
 }
 
 ul.validation-errors {
@@ -348,6 +354,13 @@ ul.validation-errors li {
 
 .wpbdp-submit-page.step-images .image .delete-image {
     color: #ff0000;
+}
+
+.wpbdp-submit-page .upgrade-to-featured-option {
+    border: solid 1px #666;
+    padding: 5px 10px;
+    margin: 25px 0 25px 0;
+    font-size: 90%;
 }
 
 /* error and status messages */
