@@ -144,8 +144,16 @@ class WPBDP_FormFieldsAdmin {
         if ( $field_type && in_array( $association, $field_type->get_supported_associations(), true ) ) {
             $field = $api->get_field( $field_id );
 
+            $field_settings = '';
+            $field_settings .= $field_type->render_field_settings( $field, $association );
+
+            ob_start();
+            do_action_ref_array( 'wpbdp_form_field_settings', array( &$field, $association ) );
+            $field_settings .= ob_get_contents();
+            ob_end_clean();
+
             $response['ok'] = true;
-            $response['html'] = $field_type->render_field_settings( $field, $association );
+            $response['html'] = $field_settings;
         }
 
         echo json_encode( $response );
@@ -154,14 +162,22 @@ class WPBDP_FormFieldsAdmin {
 
     /* preview form */
     private function previewForm() {
+        require_once( WPBDP_PATH . 'views/submit-listing.php' );
+
+        if ( wpbdp()->has_module( 'featuredlevels' ) )
+            wpbdp_admin()->messages[] = _x( 'This is a preview of the form as it will appear during "Submit a Listing". The users may not see all fields from "Manage Form Fields" because you have "Featured Levels" active and this is showing the base level.',
+                                            'formfields-preview',
+                                            'WPBDM' );
+
         $html = '';
 
         $html .= wpbdp_admin_header(_x('Form Preview', 'form-fields admin', 'WPBDM'), 'formfields-preview', array(
             array(_x('← Return to "Manage Form Fields"', 'form-fields admin', 'WPBDM'), esc_url(remove_query_arg('action')))
         ));
+        $html .= wpbdp_admin_notices();
 
-        $controller = wpbdp()->controller;
-        $html .= $controller->submit_listing();
+        $controller = new WPBDP_SubmitListingPage();
+        $html .= $controller->preview_listing_fields_form();
         $html .= wpbdp_admin_footer();
 
         echo $html;
@@ -182,7 +198,7 @@ class WPBDP_FormFieldsAdmin {
 
 
         if ( isset( $_POST['field'] ) ) {
-            $field = new WPBDP_FormField( $_POST['field'] );
+            $field = new WPBDP_FormField( stripslashes_deep( $_POST['field'] ) );
             $res = $field->save();
 
             if ( !is_wp_error( $res ) ) {

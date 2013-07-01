@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 3.0.2
+Version: 3.1
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -28,10 +28,10 @@ License: GPLv2 or any later version
     reCAPTCHA used with permission of Mike Crawford & Ben Maurer, http://recaptcha.net
 */
 
-define ( 'WPBDP_VERSION', '3.0.2' );
+define ( 'WPBDP_VERSION', '3.1' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
-define( 'WPBDP_URL', plugins_url( '/', __FILE__ ) );
+define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
 define( 'WPBDP_TEMPLATES_PATH', WPBDP_PATH . 'templates' );
 
 define( 'WPBDP_POST_TYPE', 'wpbdp_listing' );
@@ -49,7 +49,7 @@ require_once( WPBDP_PATH . 'api/payment.php' );
 require_once( WPBDP_PATH . 'api/listings.php' );
 require_once( WPBDP_PATH . 'api/templates-ui.php' );
 require_once( WPBDP_PATH . 'installer.php' );
-require_once( WPBDP_PATH . 'views.php' );
+require_once( WPBDP_PATH . 'views/views.php' );
 require_once( WPBDP_PATH . 'widgets.php' );
 
 
@@ -60,65 +60,7 @@ class WPBDP_Plugin {
 
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'plugin_activation'));
-        register_deactivation_hook(__FILE__, array($this, 'plugin_deactivation'));      
-    }
-
-    public function _listing_expirations() {
-        global $wpdb;
-
-        wpbdp_log('Running expirations hook.');
-
-        if ( !wpbdp_get_option( 'listing-renewal' ) )
-            return;
-
-        $current_date = current_time('mysql');
-
-        $posts_to_check = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on < %s AND email_sent = %d LIMIT 100", $current_date, 0) );
-
-        foreach ( $posts_to_check as $p ) {
-            $listing = get_post( $p->listing_id );
-
-            if ( !$listing || $listing->post_type != wpbdp_post_type() ) {
-                continue;
-            }
-
-            if ( !has_term( intval( $p->category_id ), wpbdp_categories_taxonomy(), $p->listing_id ) ) {
-                $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d", $p->id ) );
-                continue;
-            }
-
-            // Remove expired category from post
-            $listing_terms = wp_get_post_terms( $p->listing_id, wpbdp_categories_taxonomy(), array('fields' => 'ids') );
-            wpbdp_array_remove_value( $listing_terms, $p->category_id );
-            wp_set_post_terms( $p->listing_id, $listing_terms, wpbdp_categories_taxonomy() );
-
-            if ( !$listing_terms ) {
-                $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET post_status = %s WHERE ID = %d", wpbdp_get_option( 'deleted-status' ), $p->listing_id ) );
-            }
-
-            // Send email to listing owner
-            $headers = sprintf("MIME-Version: 1.0\n" .
-                               "From: %s <%s>\n" . 
-                               "Reply-To: %s\n" . 
-                               "Content-Type: text/html; charset=\"%s\"\n",
-                                get_option('blogname'),
-                                get_option('admin_email'),
-                                get_option('admin_email'),
-                                get_option('blog_charset'));
-            $subject = sprintf('[%s] %s', get_option('blogname'), wp_kses($listing->post_title, array()));
-            
-            $message = nl2br(wpbdp_get_option('listing-renewal-message'));
-            $message = str_replace('[listing]', esc_attr($listing->post_title), $message);
-            $message = str_replace('[category]', get_term($p->category_id, WPBDP_CATEGORY_TAX )->name, $message);
-            $message = str_replace('[expiration]', date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($p->expires_on)), $message);
-            $message = str_replace('[link]', sprintf('<a href="%1$s">%1$s</a>', add_query_arg(array('action' => 'renewlisting', 'renewal_id' => $p->id), wpbdp_get_page_link('main')) ), $message);
-
-            wpbdp_log(sprintf('Listing "%s" expired on category %s. Email sent.', $listing->post_title, $p->category_id));
-            @wp_mail(wpbusdirman_get_the_business_email($listing->ID), $subject, $message, $headers ); // TODO: move this to use WPBDP_Email
-
-            $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array('email_sent' => 1), array('id' => $p->id) );
-        }
+        register_deactivation_hook(__FILE__, array($this, 'plugin_deactivation'));
     }
 
     public function _pre_get_posts(&$query) {
@@ -233,7 +175,7 @@ class WPBDP_Plugin {
             return;
 
         // handle some deprecated stuff
-        if ( is_search() && isset( $_REQUEST['post_type'] ) && $_REQUEST['post_type'] == wpbdp_post_type() ) {
+        if ( is_search() && isset( $_REQUEST['post_type'] ) && $_REQUEST['post_type'] == WPBDP_POST_TYPE ) {
             $url = add_query_arg( array( 'action' => 'search',
                                          'dosrch' => 1,
                                          'q' => wpbdp_getv( $_REQUEST, 's', '' ) ), wpbdp_get_page_link( 'main' ) );
@@ -251,20 +193,32 @@ class WPBDP_Plugin {
         }
 
         if ( is_single() && (get_query_var('post_type') == WPBDP_POST_TYPE) && (_wpbdp_template_mode('single') == 'page') ) {
+            $url = wpbdp_get_page_link( 'main' );
+
             if (get_query_var('name')) {
-                wp_redirect( add_query_arg('listing', get_query_var('name'), wpbdp_get_page_link('main')) ); // XXX
+                wp_redirect( add_query_arg('listing', get_query_var('name'), $url) ); // XXX
             } else {
-                wp_redirect( add_query_arg('id', get_query_var('p'), wpbdp_get_page_link('main')) ); // XXX
+                if ( get_query_var('preview') == true )
+                    $url = add_query_arg( 'preview', 1, $url );
+
+                wp_redirect( add_query_arg('id', get_query_var('p'), $url) ); // XXX
             }
             
             exit;
         }
 
-        if ( (get_query_var('p') == wpbdp_get_page_id('main')) && (get_query_var('id')) ) {
+        global $post;
+        if ( ($post->ID == wpbdp_get_page_id('main')) && (get_query_var('id')) ) {
             $id = get_query_var('id');
-            $post = get_post($id);
+            $listing = get_post($id);
 
-            if (!$post || $post->post_type != wpbdp_post_type() || $post->post_status != 'publish') {
+            if ( $listing && get_query_var('preview') ) {
+                if ( current_user_can('edit_posts') )
+                    return;
+            }
+
+            if (!$listing || $listing->post_type != WPBDP_POST_TYPE || $listing->post_status != 'publish') {
+                $this->controller->action = null;
                 status_header(404);
                 nocache_headers();
                 include( get_404_template() );
@@ -360,7 +314,7 @@ class WPBDP_Plugin {
         add_shortcode('business-directory', array($this->controller, 'dispatch'));
 
         /* Expiration hook */
-        add_action('wpbdp_listings_expiration_check', array($this, '_listing_expirations'), 0);
+        add_action('wpbdp_listings_expiration_check', array($this, '_notify_expiring_listings'), 0);
 
         $this->controller->init();
 
@@ -492,7 +446,7 @@ class WPBDP_Plugin {
                 return class_exists( 'WPBDP_ListingAttachmentsModule' );
                 break;
             case 'zipcodesearch':
-                return class_exists( 'WPBDP_ZIPShortcodeModule' );
+                return class_exists( 'WPBDP_ZIPCodeSearchModule' );
                 break;
             case 'featuredlevels':
                 return class_exists( 'WPBDP_FeaturedLevelsModule' );
@@ -530,13 +484,13 @@ class WPBDP_Plugin {
     }
 
     public function _credits_footer() {
-        $html = '';
+        if ( !wpbdp_get_option( 'credit-author') )
+            return;
 
-        if(wpbdp_get_option('credit-author')) {
-            $html .= '<div class="wpbdmac">Directory powered by <a href="http://businessdirectoryplugin.com/">Business Directory Plugin</a></div>';
-        }
-
-        echo $html;
+        echo '<div class="wpbdp-credit-info wpbdmac">';
+        printf( _x( 'Directory powered by %s', 'credits footer', 'WPBDM' ),
+                '<a href="http://businessdirectoryplugin.com">Business Directory Plugin</a>' );
+        echo '</div>';
     }
 
     public function _register_widgets() {
@@ -592,8 +546,8 @@ class WPBDP_Plugin {
         wp_enqueue_script('wpbdp-js', WPBDP_URL . 'resources/js/wpbdp.js', array('jquery'));
 
         // enable legacy css (should be removed in a future release) XXX
-        if (_wpbdp_template_mode('single') == 'template' || _wpbdp_template_mode('category') == 'template' ||  wpbdp_get_page_id('main') == get_option('page_on_front') )
-            wp_enqueue_style('wpbdp-legacy-css', WPBDP_URL . '/resources/css/wpbdp-legacy.css');
+        if (_wpbdp_template_mode('single') == 'template' || _wpbdp_template_mode('category') == 'template' )
+            wp_enqueue_style('wpbdp-legacy-css', WPBDP_URL . 'resources/css/wpbdp-legacy.css');
 
         $counter = 0;
         foreach (array('wpbdp.css', 'wpbusdirman.css', 'wpbdp_custom_style.css', 'wpbdp_custom_styles.css', 'wpbdm_custom_style.css', 'wpbdm_custom_styles.css') as $stylesheet) {
@@ -679,6 +633,14 @@ class WPBDP_Plugin {
         if ( !$action )
             return;
 
+        // Relevanssi
+        if ( in_array( $action, array( 'submitlisting', 'editlisting' ), true ) && function_exists( 'relevanssi_insert_edit' ) ) {
+            remove_action( 'wp_insert_post', 'relevanssi_insert_edit', 99, 1 );
+            remove_action( 'delete_attachment', 'relevanssi_delete' );
+            remove_action( 'add_attachment', 'relevanssi_publish' );
+            remove_action( 'edit_attachment', 'relevanssi_edit' );  
+        }
+
         $bad_filters = array( 'get_the_excerpt' => array(), 'the_excerpt' => array(), 'the_content' => array() );
 
         // AddThis Social Bookmarking Widget - http://www.addthis.com/
@@ -749,8 +711,8 @@ class WPBDP_Plugin {
                 break;
 
             case 'browsecategory':
-                $term = get_term_by('slug', get_query_var('category'), wpbdp_categories_taxonomy());
-                if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), wpbdp_categories_taxonomy());
+                $term = get_term_by('slug', get_query_var('category'), WPBDP_CATEGORY_TAX);
+                if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), WPBDP_CATEGORY_TAX);
 
                 if ( $this->_do_wpseo ) {
                     global $wpseo_front;
@@ -794,17 +756,47 @@ class WPBDP_Plugin {
 
     public function _meta_keywords() {
         global $wpseo_front;
-        global $post;
 
-        $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
+        $current_action = $this->controller->get_current_action();
 
-        $prev_post = $post;
-        $post = get_post( $listing_id );
+        switch ( $current_action ){
+            case 'showlisting':
+                global $post;
 
-        $wpseo_front->metadesc();
-        $wpseo_front->metakeywords();
+                $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
 
-        $post = $prev_post;
+                $prev_post = $post;
+                $post = get_post( $listing_id );
+
+                $wpseo_front->metadesc();
+                $wpseo_front->metakeywords();
+
+                $post = $prev_post;
+
+                break;
+            case 'browsecategory':
+            case 'browsetag':
+                if ( $current_action == 'browsetag' ) {
+                    $term = get_term_by('slug', get_query_var('tag'), WPBDP_TAGS_TAX);
+                } else {
+                    $term = get_term_by('slug', get_query_var('category'), WPBDP_CATEGORY_TAX);
+                    if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), WPBDP_CATEGORY_TAX);                    
+                }
+
+                if ( $term ) {
+                    $metadesc = wpseo_get_term_meta( $term, $term->taxonomy, 'desc' );
+                    if ( !$metadesc && isset( $wpseo_front->options['metadesc-' . $term->taxonomy] ) )
+                        $metadesc = wpseo_replace_vars( $wpseo_front->options['metadesc-' . $term->taxonomy], (array) $term );
+
+                    if ( $metadesc )
+                        echo '<meta name="description" content="' . esc_attr( strip_tags( stripslashes( $metadesc ) ) ) . '"/>' . "\n";
+                }
+
+                break;
+            default:
+                break;
+        }
+
     }
 
     public function _meta_rel_canonical() {
@@ -814,9 +806,15 @@ class WPBDP_Plugin {
             return rel_canonical();
 
         if ( in_array( $action, array( 'editlisting', 'submitlisting', 'sendcontactmessage', 'deletelisting', 'upgradetostickylisting', 'renewlisting', 'payment-process' ) ) )
-            return;        
+            return;
 
-        $link = $_SERVER['REQUEST_URI'];
+        if ( $action == 'showlisting' ) {
+            $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));            
+            $link = get_permalink( $listing_id );
+        } else {
+            $link = $_SERVER['REQUEST_URI'];
+        }
+
         echo sprintf( '<link rel="canonical" href="%s" />', $link );
     }
 
@@ -860,8 +858,23 @@ class WPBDP_Plugin {
         echo sprintf( '<script type="text/javascript">window.parent.WPBDP.fileUpload.resizeIFrame(%d);</script>', $_REQUEST['field_id'] );
         
         exit;
-    }    
+    }
 
+    /* Listing expiration. */
+    public function _notify_expiring_listings() {
+        global $wpdb;
+
+        if ( !wpbdp_get_option( 'listing-renewal' ) )
+            return;
+
+        wpbdp_log('Running expirations hook.');
+
+        $now = current_time( 'timestamp' );
+
+        $api = wpbdp_listings_api();
+        $api->notify_expiring_listings( 0, $now ); //  notify already expired listings first
+        $api->notify_expiring_listings( wpbdp_get_option( 'renewal-email-threshold', 5 ), $now ); // notify listings expiring soon
+    }
 
 }
 

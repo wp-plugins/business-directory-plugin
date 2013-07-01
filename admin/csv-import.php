@@ -38,7 +38,7 @@ class WPBDP_CSVImportAdmin {
             if ( $field->get_association() == 'title' ) {
                 return sprintf(_x('Business %s', 'admin csv-import', 'WPBDM'), $letters[rand(0,strlen($letters)-1)]);
             } elseif ( $field->get_association() == 'category') {
-                if ( $terms = get_terms(wpbdp_categories_taxonomy(), 'number=5&hide_empty=0') ) {
+                if ( $terms = get_terms(WPBDP_CATEGORY_TAX, 'number=5&hide_empty=0') ) {
                     return $terms[array_rand($terms)]->name;
                 } else {
                     return '';
@@ -83,7 +83,7 @@ class WPBDP_CSVImportAdmin {
         ));
 
         $posts = get_posts(array(
-            'post_type' => wpbdp_post_type(),
+            'post_type' => WPBDP_POST_TYPE,
             'post_status' => 'publish',
             'numberposts' => 10
         ));
@@ -421,7 +421,7 @@ class WPBDP_CSVImporter {
 
         $listing_username = null;
 
-        $listing = array('fields' => array(), 'images' => array());
+        $listing = array('categories' => array(), 'fields' => array(), 'images' => array());
 
         $listing_images = array();
         $listing_fields = array();
@@ -474,15 +474,17 @@ class WPBDP_CSVImporter {
                     if (!$category_name)
                         continue;
 
-                    if ($term = term_exists($category_name, wpbdp_categories_taxonomy())) {
-                        $listing_fields[$field->get_id()][] = $term['term_id'];
+                    if ($term = term_exists($category_name, WPBDP_CATEGORY_TAX)) {
+                        $listing['categories'][] = $term['term_id'];
+                        // $listing_fields[$field->get_id()][] = $term['term_id'];
                     } else {
                         if ($this->settings['create-missing-categories']) {
                             if ($this->in_test_mode())
                                 continue;
 
-                            if ($newterm = wp_insert_term($category_name, wpbdp_categories_taxonomy())) {
-                                $listing_fields[$field->get_id()][] = $newterm['term_id'];
+                            if ($newterm = wp_insert_term($category_name, WPBDP_CATEGORY_TAX)) {
+                                $listing['categories'][] = $newterm['term_id'];
+                                // $listing_fields[$field->get_id()][] = $newterm['term_id'];
                             } else {
                                 $errors[] = sprintf(_x('Could not create listing category "%s"', 'admin csv-import', 'WPBDM'), $category_name);
                                 return false;
@@ -495,7 +497,11 @@ class WPBDP_CSVImporter {
                     }
                 }
             } elseif ($field->get_association() == 'tags') {
-                $listing_fields[$field->get_id()][] = $data[$i];
+                $tags = $data[ $i ];
+                $tags = array_map( 'trim', explode( $this->settings['category-separator'], $tags ) );
+                $tags = $field->get_field_type()->get_id() == 'textfield' ? implode( ',', $tags ) : $tags;
+
+                $listing_fields[$field->get_id()][] = $tags;
             } else {
                 $listing_fields[$field->get_id()] = $data[$i];
             }
@@ -553,7 +559,8 @@ class WPBDP_CSVImporter {
 
         if ($this->settings['test-import'])
             return true;
-        $listing_id = wpbdp_listings_api()->add_listing($listing);
+        $listing_id = wpbdp_save_listing( $listing );
+        wpbdp_debug_e( $listing_id );
 
         // create permalink
         $post = get_post($listing_id);

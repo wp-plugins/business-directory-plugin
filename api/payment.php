@@ -173,6 +173,45 @@ class WPBDP_FeesAPI {
 
 }
 
+    // public function get_fee_by_id($id) {
+    //     global $wpdb;
+
+    //     if ($id == 0)
+    //         return $this->get_free_fee();
+
+    //     if ($fee = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wpbdp_fees WHERE id = %d", $id))) {
+    //         $this->normalize($fee);
+    //         return $fee;
+    //     }
+
+    //     return null;
+    // }
+
+/**
+ * Finds a fee by its ID. The special ID of 0 is reserved for the "free fee".
+ * @param int $fee_id fee ID
+ * @return object a fee object or NULL if nothing is found
+ * @since 3.0.3
+ */
+function wpbdp_get_fee( $fee_id ) {
+    return wpbdp_fees_api()->get_fee_by_id( $fee_id );
+}
+
+/**
+ * Finds fees available for one or more directory categories.
+ * @param int|array $categories term ID or array of term IDs
+ * @return object|
+ * @since 3.0.3
+ */
+function wpbdp_get_fees_for_category( $categories=null ) {
+    $categories_ = is_array( $categories ) ? $categories : array( $categories );
+    $results = wpbdp_fees_api()->get_fees( $categories_ );
+
+    return is_array( $categories) ? $results : array_pop( $results );
+}
+
+
+
 class WPBDP_PaymentsAPI {
 
     public function __construct() {
@@ -285,6 +324,32 @@ class WPBDP_PaymentsAPI {
             ));
     }
 
+    public function cancel_transaction( &$transaction ) {
+        if ( !$transaction || !is_object( $transaction ) )
+            return false;
+
+        global $wpdb;
+
+        switch ( $transaction->payment_type ) {
+            case 'upgrade-to-sticky':
+                $upgrades_api = wpbdp_listing_upgrades_api();
+                $info = $upgrades_api->get_info( $transaction->listing_id );
+
+                if ( $info->downgradeable )
+                    $upgrades_api->set_sticky( $transaction->listing_id, $info->downgrade->id );
+
+                wpbdp_listings_api()->set_payment_status( $transaction->listing_id, 'paid' );
+
+
+                break;
+            case 'initial':
+            default:
+                break;
+        }
+
+        return true;
+    }
+
     public function get_uri_id_for_transaction($transaction) {
         return urlencode(base64_encode(sprintf('%d.%s', $transaction->id, strtotime($transaction->created_on))));
     }
@@ -325,8 +390,11 @@ class WPBDP_PaymentsAPI {
         if ($transaction->id == $this->get_last_transaction($transaction->listing_id)->id) {
             update_post_meta($transaction->listing_id, '_wpbdp[payment_status]', $transaction->status == 'approved' ? 'paid' : 'not-paid');
 
-            if ( $transaction->status == 'approved' ) {
-                wp_update_post( array( 'ID' => $transaction->listing_id, 'post_status' => wpbdp_get_option( 'new-post-status' ) ) );
+            if ( $transaction->status == 'approved' && $transaction->payment_type == 'initial' ) {
+                if ( get_post_status( $transaction->listing_id ) == 'publish' ) {
+                } else {
+                    wp_update_post( array( 'ID' => $transaction->listing_id, 'post_status' => wpbdp_get_option( 'new-post-status' ) ) );
+                }
             }
         }
 
@@ -341,12 +409,12 @@ class WPBDP_PaymentsAPI {
             } elseif ($transaction->payment_type == 'renewal') {
                 $listingsapi = wpbdp_listings_api();
 
-                $extradata = unserialize($transaction->extra_data);
-                $renewalinfo = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d", $extradata['renewal_id']));
+                $extradata = $transaction->extra_data;
+                $renewalinfo = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d", $extradata['renewal_id'] ) );
                 
-                $listingsapi->assign_fee($transaction->listing_id, $renewalinfo->category_id, $extradata['fee'], true);
+                $listingsapi->assign_fee( $transaction->listing_id, $renewalinfo->category_id, $extradata['fee'], true );
 
-                wp_update_post(array('post_status' => 'publish', 'ID' => $transaction->listing_id));
+                wp_update_post( array( 'post_status' => 'publish', 'ID' => $transaction->listing_id ) );
             }
         } elseif ($transaction->status == 'rejected') {
             if ($transaction->payment_type == 'upgrade-to-sticky') {
@@ -357,6 +425,11 @@ class WPBDP_PaymentsAPI {
                     $upgrades_api->set_sticky( $transaction->listing_id, $sticky_info->level->id );
             }
         }
+    }
+
+    public function delete_transaction($trans_) {
+        global $wpdb;
+        $wpdb->query( $wpdb->prepare("DELETE FROM {$wpdb->prefix}wpbdp_payments WHERE id = %d", $trans_->id) );
     }
 
     public function save_transaction($trans_) {
@@ -461,7 +534,7 @@ class WPBDP_PaymentsAPI {
         return null;
     }
 
-    public function process_payment($gateway_id) {
+    public function process_payment($gateway_id, &$error_message=null) {
         if (!array_key_exists($gateway_id, $this->gateways))
             return;
 
@@ -469,7 +542,7 @@ class WPBDP_PaymentsAPI {
         unset($getvars['action']);
         unset($getvars['page_id']);
 
-        return call_user_func($this->gateways[$gateway_id]->process_callback, array_merge($_POST, $getvars));
+        return call_user_func_array( $this->gateways[$gateway_id]->process_callback, array( array_merge($_POST, $getvars), &$error_message ) );
     }
 
 }

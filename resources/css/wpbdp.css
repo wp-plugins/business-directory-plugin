@@ -380,3 +380,42 @@ ul.validation-errors li {
 }
 
 /*.wpbusdirmanerroralert { color:#ff0000;font-weight:bold;font-size:14px; }*/
+
+.wpbdp-submit-page .fee-options .fee-option .fee-label {
+    font-weight: bold;
+}
+
+.wpbdp-submit-page .fee-options .fee-description {
+    font-size: 90%;
+    color: #666;
+}
+
+/* credits footer */
+.wpbdp-credit-info {
+    font-size: 9px;
+    text-align: center;
+    color: #494949;
+}
+
+.wpbdp-credit-info a {
+    color: inherit;
+}
+
+#wpbdp-renewal-page .do-not-renew-listing {
+    margin: 40px 0;
+    border: solid 1px #eee;
+    font-size: 95%;
+}
+
+#wpbdp-renewal-page .do-not-renew-listing .header {
+    background: #bc0b0b;
+    color: #fff;
+    text-align: center;
+    font-weight: bold;
+    padding: 2px 0;
+}
+
+#wpbdp-renewal-page .do-not-renew-listing input[type="submit"] {
+    /*border: solid 1px #bc0b0b;*/
+    color: #900000;
+}

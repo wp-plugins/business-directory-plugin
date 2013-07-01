@@ -50,7 +50,7 @@ class WPBDP_FormFieldType {
                 $value = wp_get_object_terms( $post_id, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
                 break;
             case 'tags':
-                $value = wp_get_object_terms( $post_id, WPBDP_TAGS_TAX, array( 'fields' => 'ids' ) );
+                $value = wp_get_object_terms( $post_id, WPBDP_TAGS_TAX, array( 'fields' => 'names' ) );
                 break;
             case 'meta':
                 $value = get_post_meta( $post_id, '_wpbdp[fields][' . $field->get_id() . ']', true );
@@ -131,11 +131,11 @@ class WPBDP_FormFieldType {
         return self::standard_display_wrapper( $field, $field->html_value( $post_id ) );
     }
 
-    public function render_field_inner( &$field, $value, $render_context ) {
+    public function render_field_inner( &$field, $value, $render_context, &$extra=null ) {
         return '';
     }
 
-    public function render_field( &$field, $value, $render_context ) {
+    public function render_field( &$field, $value, $render_context, &$extra=null ) {
         $html = '';
 
         switch ( $render_context ) {
@@ -144,11 +144,11 @@ class WPBDP_FormFieldType {
                                   $field->get_field_type()->get_id(),
                                   implode(' ', $field->css_classes ),
                                   $this->html_attributes( $field->html_attributes ) );
-                $html .= sprintf( '<div class="label"><label>%s</label></div>', esc_attr( $field->get_label() ) );
+                $html .= sprintf( '<div class="label"><label>%s</label></div>', esc_html( $field->get_label() ) );
                 $html .= '<div class="field inner">';
 
-                $field_inner = $this->render_field_inner( $field, $value, $render_context );
-                $field_inner = apply_filters_ref_array( 'wpbdp_render_field_inner', array( $field_inner, &$field, $value, $render_context ) );
+                $field_inner = $this->render_field_inner( $field, $value, $render_context, $extra );
+                $field_inner = apply_filters_ref_array( 'wpbdp_render_field_inner', array( $field_inner, &$field, $value, $render_context, &$extra ) );
                 
                 $html .= $field_inner;
                 $html .= '</div>';
@@ -159,24 +159,25 @@ class WPBDP_FormFieldType {
             case 'submit':
             case 'edit':
             default:
+                $html_attributes = $this->html_attributes( apply_filters_ref_array( 'wpbdp_render_field_html_attributes', array( $field->html_attributes, &$field, $value, $render_context, &$extra ) ) );
+
                 $html .= sprintf( '<div class="wpbdp-form-field %s %s %s %s" %s>',
                                   $field->get_field_type()->get_id(),
                                   $field->get_description() ? 'with-description' : '',
                                   implode( ' ', $field->get_validators() ),
                                   implode( ' ', $field->css_classes),
-                                  $this->html_attributes( $field->html_attributes )
-                                   );
+                                  $html_attributes );
                 $html .= '<div class="wpbdp-form-field-label">';
-                $html .= sprintf( '<label for="%s">%s</label>', 'wpbdp-field-' . $field->get_id(), esc_attr( $field->get_label() ) );
+                $html .= sprintf( '<label for="%s">%s</label>', 'wpbdp-field-' . $field->get_id(), esc_html( $field->get_label() ) );
 
                 if ( $field->get_description() )
-                    $html .= sprintf( '<span class="field-description">(%s)</span>', $field->get_description() );
+                    $html .= sprintf( '<span class="field-description">(%s)</span>', esc_html( $field->get_description() ) );
 
                 $html .= '</div>';
                 $html .= '<div class="wpbdp-form-field-html wpbdp-form-field-inner">';
 
-                $field_inner = $this->render_field_inner( $field, $value, $render_context );
-                $field_inner = apply_filters_ref_array( 'wpbdp_render_field_inner', array( $field_inner, &$field, $value, $render_context ) );                
+                $field_inner = $this->render_field_inner( $field, $value, $render_context, $extra );
+                $field_inner = apply_filters_ref_array( 'wpbdp_render_field_inner', array( $field_inner, &$field, $value, $render_context, &$extra ) );                
 
                 $html .= $field_inner;
                 $html .= '</div>';
@@ -295,7 +296,7 @@ class WPBDP_FormFieldType {
         foreach ( $attrs as $k => $v ) {
             if ( $k == 'class' ) continue; // use ->css_classes for this
 
-            $html .= sprintf( '%s=%s ', $k, $v );
+            $html .= sprintf( '%s="%s" ', $k, $v );
         }
 
         return $html;
@@ -373,17 +374,19 @@ class WPBDP_FormField {
         $this->display_flags = $attrs['display_flags'];
         $this->field_data = $attrs['field_data'];
 
-        if ( in_array( $this->association, array( 'category', 'tags' ), true ) ) {
-            // TODO: make this hierarchical (see https://codex.wordpress.org/Function_Reference/Walker_Class)
-            $terms = get_terms( $this->association == 'tags' ? WPBDP_TAGS_TAX : wpbdp_categories_taxonomy(), 'hide_empty=0&hierarchical=1' );
-            $options = array();
+        if ( $this->association == 'category' ) {
+            $this->field_data['options'] = array();
+        // } elseif ( $this->association == 'category' ) {
+        //     // TODO: make this hierarchical (see https://codex.wordpress.org/Function_Reference/Walker_Class)
+        //     $terms = get_terms( $this->association == 'tags' ? WPBDP_TAGS_TAX : wpbdp_categories_taxonomy(), 'hide_empty=0&hierarchical=1' );
+        //     $options = array();
 
-            foreach ( $terms as &$term ) {
-                $k = $this->association == 'tags' ? $term->slug : $term->term_id;
-                $options [ $k ] = $term->name;
-            }
+        //     foreach ( $terms as &$term ) {
+        //         $k = $this->association == 'tags' ? $term->slug : $term->term_id;
+        //         $options [ $k ] = $term->name;
+        //     }
 
-            $this->field_data['options'] = $options;
+        //     $this->field_data['options'] = $options;
         } else {
             // handle some special extra data from previous BD versions
             // TODO: this is not needed anymore since the 3.2 upgrade routine
@@ -524,7 +527,7 @@ class WPBDP_FormField {
      * @return mixed
      */
     public function value( $post_id ) {
-        if ( !get_post_type( $post_id ) == wpbdp_post_type() )
+        if ( !get_post_type( $post_id ) == WPBDP_POST_TYPE )
             return null;        
 
         $value = $this->type->get_field_value( $this, $post_id );
@@ -605,7 +608,9 @@ class WPBDP_FormField {
         if ( $this->type->is_empty_value( $this->value( $post_id ) ) )
             return '';
 
-        return $this->type->display_field( $this, $post_id, $display_context );
+        $html = $this->type->display_field( $this, $post_id, $display_context );
+        $html = apply_filters_ref_array( 'wpbdp_form_field_display', array( $html, &$this, $display_context, $post_id ) );
+        return $html;
     }
 
     /**
@@ -614,9 +619,9 @@ class WPBDP_FormField {
      * @param string $display_context the rendering context. defaults to 'submit'.
      * @return string
      */
-    public function render( $value=null, $display_context='submit' ) {
+    public function render( $value=null, $display_context='submit', &$extra=null ) {
         do_action_ref_array( 'wpbdp_form_field_pre_render', array( &$this, $value, $display_context ) );
-        return $this->type->render_field( $this, $value, $display_context );
+        return $this->type->render_field( $this, $value, $display_context, $extra );
     }
 
     /**
@@ -633,6 +638,7 @@ class WPBDP_FormField {
 
         if ( isset( $_POST['field'] ) ) {
             $res = $this->type->process_field_settings( $this );
+            do_action_ref_array( 'wpbdp_form_field_settings_process', array( &$this ) );
 
             if ( is_wp_error( $res ) )
                 return $res;
@@ -959,12 +965,34 @@ class WPBDP_FormFields {
 
         extract( $args );
 
-        $validators = !is_array( $validators ) ? array( $validators ) : $validators;
-        $display_flags = !is_array( $display_flags ) ? array( $display_flags ) : $display_flags;
+        $validators = $validators ? ( !is_array( $validators ) ? array( $validators ) : $validators ) : array();
+        $display_flags = $display_flags ? ( !is_array( $display_flags ) ? array( $display_flags ) : $display_flags ) : array();
 
         $where = '';
-        if ( $args['association'] )
-            $where .= $wpdb->prepare( " AND ( association = %s ) ", $args['association'] );
+        if ( $args['association'] ) {
+            $associations_in = array();
+            $associations_not_in = array();
+
+            $association = !is_array( $association) ? array( $association ) : $association;
+
+            foreach ( $association as &$assoc ) {
+                if ( wpbdp_starts_with( $assoc, '-' ) ) {
+                    $associations_not_in[] = substr( $assoc, 1 );
+                } else {
+                    $associations_in[] = $assoc;
+                }
+            }
+
+            if ( $associations_in ) {
+                $where .= ' AND ( association IN ( \'' . implode( '\',\'', $associations_in)  . '\' ) ) ';
+            }
+
+            if ( $associations_not_in ) {
+                $where .= ' AND ( association NOT IN ( \'' . implode( '\',\'', $associations_not_in)  . '\' ) ) ';
+            }
+
+            // $where .= $wpdb->prepare( " AND ( association = %s ) ", $args['association'] );
+        }
 
         foreach ( $display_flags as $f ) {
             if ( substr($f, 0, 1) == '-' )
