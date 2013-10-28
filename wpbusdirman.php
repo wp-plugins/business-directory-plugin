@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 3.1.1
+Version: 3.2
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -28,7 +28,7 @@ License: GPLv2 or any later version
     reCAPTCHA used with permission of Mike Crawford & Ben Maurer, http://recaptcha.net
 */
 
-define ( 'WPBDP_VERSION', '3.1.1' );
+define( 'WPBDP_VERSION', '3.2' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -42,6 +42,7 @@ require_once( WPBDP_PATH . 'api/api.php' );
 require_once( WPBDP_PATH . 'deprecated/deprecated.php' );
 include_once( WPBDP_PATH . 'gateways-googlecheckout.php' );
 require_once( WPBDP_PATH . 'utils.php' );
+require_once( WPBDP_PATH . 'admin/tracking.php' );
 require_once( WPBDP_PATH . 'admin/wpbdp-admin.class.php' );
 require_once( WPBDP_PATH . 'api/wpbdp-settings.class.php' );
 require_once( WPBDP_PATH . 'api/form-fields.php' );
@@ -208,7 +209,7 @@ class WPBDP_Plugin {
         }
 
         global $post;
-        if ( ($post->ID == wpbdp_get_page_id('main')) && (get_query_var('id')) ) {
+        if ( $post && ($post->ID == wpbdp_get_page_id('main')) && (get_query_var('id')) ) {
             $id = get_query_var('id');
             $listing = get_post($id);
 
@@ -265,12 +266,14 @@ class WPBDP_Plugin {
         
         $this->controller = new WPBDP_DirectoryController();
 
+        add_action( 'plugins_loaded', array( &$this, 'load_i18n' ) );
         add_action('init', array($this, 'install_or_update_plugin'), 1);
         add_action('init', array($this, '_register_post_type'), 0);
 
         add_action('init', array($this, '_plugin_initialization'));
         add_action('init', array($this, '_session_start'));
         add_action('init', array($this, '_register_image_sizes'));
+        add_action( 'init', array( &$this, 'handle_recaptcha' ) );
 
         // add_action('init', create_function('', 'do_action("wpbdp_listings_expiration_check");'), 20); // XXX For testing only
 
@@ -292,7 +295,7 @@ class WPBDP_Plugin {
 
         add_action( 'wp', array( $this, '_meta_setup' ) );
         add_action( 'wp', array( $this, '_jetpack_compat' ), 11, 1 );
-        add_action( 'wp_head', array( $this, '_handle_broken_plugin_filters' ), 99 );
+        add_action( 'wp_head', array( $this, '_handle_broken_plugin_filters' ), 0 );
 
         add_filter( 'wp_title', array( $this, '_meta_title' ), 10, 3 );        
 
@@ -330,8 +333,11 @@ class WPBDP_Plugin {
         // do_action( 'wpbdp_register_settings', $this->settings );
         do_action_ref_array( 'wpbdp_register_settings', array( &$this->settings ) );
         do_action('wpbdp_register_fields', $this->formfields);
-
         do_action('wpbdp_modules_init');
+
+        if ( wpbdp_get_option( 'tracking-on', false ) ) {
+            $this->site_tracking = new WPBDP_SiteTracking();
+        }
     }
 
     public function get_post_type() {
@@ -349,10 +355,12 @@ class WPBDP_Plugin {
     public function install_or_update_plugin() {
         $installer = new WPBDP_Installer();
         $installer->install();
-        
+    }
+
+    public function load_i18n() {
         $plugin_dir = basename( dirname( __FILE__ ) );
         $languages_dir = trailingslashit( $plugin_dir . '/languages' );
-        load_plugin_textdomain( 'WPBDM', false, $languages_dir );
+        load_plugin_textdomain( 'WPBDM', false, $languages_dir );        
     }
 
     function _session_start() {
@@ -409,6 +417,17 @@ class WPBDP_Plugin {
         // thumbnail size
         add_image_size( 'wpbdp-thumb', $thumbnail_width, 0, false );
         add_image_size( 'wpbdp-large', $max_width, $max_height, false );
+    }
+
+    public function handle_recaptcha() {
+        // Comments reCAPTCHA.
+        if ( wpbdp_get_option( 'recaptcha-for-comments' ) ) {
+            add_filter( 'comment_form_field_comment', array( &$this, 'recaptcha_in_comments' ) );
+            add_action( 'preprocess_comment', array( &$this, 'check_comment_recaptcha' ), 0 );
+                
+                // add_action('wp_head', array(&$this, 'saved_comment'), 0);
+            add_action( 'comment_post_redirect', array( &$this, 'comment_relative_redirect' ), 0, 2 );
+        }        
     }
 
     public function debug_on() {
@@ -672,6 +691,11 @@ class WPBDP_Plugin {
             $bad_filters['the_content'][] = 'shrsb_get_cb';
         }
 
+        // Simple Facebook Connect (#481)
+        if ( function_exists( 'sfc_version' ) ) {
+            remove_action( 'wp_head', 'sfc_base_meta' );
+        }
+
         // Quick AdSense - http://quicksense.net/
         global $QData;
         if ( isset( $QData ) ) {
@@ -692,6 +716,41 @@ class WPBDP_Plugin {
         $action = $this->controller->get_current_action();
 
         switch ($action) {
+            case 'submitlisting':
+                $title = _x( 'Submit A Listing', 'title', 'WPBDM' );
+
+                if ( $this->_do_wpseo ) {
+                    $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );
+                    return $title;
+                }                
+
+                return  $title . ' ' . $sep . ' ';
+
+                break;
+
+            case 'search':
+                $title = _x( 'Find a Listing', 'title', 'WPBDM' );
+
+                if ( $this->_do_wpseo ) {
+                    $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );
+                    return $title;
+                }
+
+                return $title . ' ' . $sep . ' ';
+
+                break;
+
+            case 'viewlistings':
+                $title = _x( 'View All Listings', 'title', 'WPBDM' );
+
+                if ( $this->_do_wpseo ) {
+                    $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );
+                    return $title;
+                }
+
+                return $title . ' ' . $sep . ' ';
+                break;                
+
             case 'browsetag':
                 $term = get_term_by('slug', get_query_var('tag'), WPBDP_TAGS_TAX);
 
@@ -747,6 +806,16 @@ class WPBDP_Plugin {
                 return $post_title . ' '.  $sep . ' ';
                 break;
 
+            case 'main':
+                if ( $this->_do_wpseo ) {
+                    global $wpseo_front;
+
+                    $title = $wpseo_front->get_content_title( get_post( $listing_id ) );
+                    $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );                    
+                }
+                
+                break;                
+
             default:
                 break;
         }
@@ -793,6 +862,13 @@ class WPBDP_Plugin {
                 }
 
                 break;
+
+            case 'main':
+                $wpseo_front->metadesc();
+                $wpseo_front->metakeywords();
+
+                break;
+
             default:
                 break;
         }
@@ -829,6 +905,9 @@ class WPBDP_Plugin {
         switch ($action) {
             case 'file-upload':
                 return $this->_handle_ajax_file_upload();
+                break;
+            default:
+                do_action( 'wpbdp_ajax_' . $action );
                 break;
         }
 
@@ -874,6 +953,130 @@ class WPBDP_Plugin {
         $api = wpbdp_listings_api();
         $api->notify_expiring_listings( 0, $now ); //  notify already expired listings first
         $api->notify_expiring_listings( wpbdp_get_option( 'renewal-email-threshold', 5 ), $now ); // notify listings expiring soon
+
+        if ( wpbdp_get_option( 'renewal-reminder' ) ) {
+            $threshold = -max( 1, intval( wpbdp_get_option( 'renewal-reminder-threshold' ) ) );
+            $api->notify_expiring_listings( $threshold, $now );
+        }
+    }
+
+
+    /*
+     *  Comments reCAPTCHA.
+     */
+
+    public function recaptcha_in_comments( $comment_field ) {
+        $html  = '';
+        $html .= $comment_field;
+
+        if ( wpbdp_get_option( 'recaptcha-on' ) ) {
+            // XXX: We can only have one reCAPTCHA per page, so workaround this limitation by sharing the one in the contact form.
+            add_action( 'wp_footer', array( &$this, 'comment_recaptcha_workaround' ) );
+
+            $html .= '<div id="wpbdp-comment-recaptcha">';
+        } else {
+            if ( !function_exists( 'recaptcha_get_html' ) )
+                require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
+
+            $html .= '<div id="wpbdp-comment-recaptcha">';
+            $html .= recaptcha_get_html( wpbdp_get_option( 'recaptcha-public-key' ) );
+        }
+
+        $error = '';
+        if ( isset( $_GET['wpbdp-recaptcha-error'] ) && $_GET['wpbdp-recaptcha-error'] ) {
+            $error = _x( "The reCAPTCHA wasn't entered correctly.", 'comment-form', 'WPBDM' );
+
+            add_action( 'wp_footer', array( &$this, 'restore_comment_fields' ) );
+        }
+
+        $html .= '</div>';
+
+        if ( $error )
+            $html .= sprintf( '<p class="wpbdp-recaptcha-error">%s</p>', $error );        
+
+        return $html;
+    }
+    
+    public function check_comment_recaptcha( $comment_data ) {
+        $private_key = wpbdp_get_option( 'recaptcha-private-key' );
+
+        if ( !$private_key )
+            return $comment_data;
+
+        if ( !function_exists( 'recaptcha_get_html' ) )
+            require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
+
+        $response = recaptcha_check_answer( $private_key, $_SERVER['REMOTE_ADDR'], $_POST['recaptcha_challenge_field'], $_POST['recaptcha_response_field'] );
+        
+        if ( !$response->is_valid ) {
+            $this->_comment_recaptcha_error = $response->error;
+            add_filter( 'pre_comment_approved', create_function( '$a', 'return \'spam\';' ) );
+        }
+
+        return $comment_data;
+    }
+
+    public function comment_relative_redirect( $location, $comment ) {
+        if ( !isset( $this->_comment_recaptcha_error ) || empty( $this->_comment_recaptcha_error ) )
+            return $location;
+
+        $location = substr( $location, 0, strpos( $location, '#' ) );
+        $location = add_query_arg( 'wpbdp-recaptcha-error', urlencode( base64_encode( $comment->comment_ID . '/' . $this->_comment_recaptcha_error ) ), $location );
+        $location .= '#commentform';
+
+        return $location;
+    }
+
+    public function restore_comment_fields() {
+        if ( !isset( $_GET['wpbdp-recaptcha-error'] ) || empty( $_GET['wpbdp-recaptcha-error'] ) )
+            return;
+
+        $error_data = explode('/', base64_decode( urldecode( $_GET['wpbdp-recaptcha-error'] ) ) );
+        $comment_id = $error_data ? intval( $error_data[0] ) : 0;
+        $comment = get_comment( $comment_id );
+
+        if ( !$comment )
+            return;
+
+        echo <<<JS
+        <script type="text/javascript">//<![CDATA[
+            jQuery('#comment').val("{$comment->comment_content}");
+        //]]></script>
+JS;
+    }
+
+    public function comment_recaptcha_workaround() {
+        $public_key = wpbdp_get_option( 'recaptcha-public-key' );
+
+        echo <<<JS
+        <script type="text/javascript">//<![CDATA[
+        jQuery(document).ready(function(){
+            jQuery('#comment, #wpbdp-contact-form-message').focusin(function(){
+                var recaptchaInUse = jQuery('#wpbdp-comment-recaptcha').children().length > 0 ? 'comment' : 'contact';
+                var focusedElement = jQuery(this).attr('id') == 'comment' ? 'comment' : 'contact';
+
+                if ( recaptchaInUse == focusedElement )
+                    return;
+
+                var recaptchaArea = focusedElement == 'comment' ? 'wpbdp-comment-recaptcha' : 'wpbdp-contact-form-recaptcha';
+
+                Recaptcha.destroy();
+                jQuery('#wpbdp-contact-form-recaptcha, #wpbdp-comment-recaptcha').attr('class', '').empty();
+                Recaptcha.create('{$public_key}', recaptchaArea);
+            });
+        });
+        //]]></script>
+JS;
+
+        if ( isset( $_GET['wpbdp-recaptcha-error'] ) && !empty( $_GET['wpbdp-recaptcha-error'] ) ) {
+            echo <<<JS
+            <script type="text/javascript">//<![CDATA[
+            jQuery(document).ready(function(){
+                jQuery('#comment').focus();
+            });
+            //]]></script>
+JS;
+        }
     }
 
 }

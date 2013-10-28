@@ -189,6 +189,7 @@ form#wpbdmsearchform a.advanced-search-link {
 }
 
 .wpbdp-listing-single .extra-images ul li img {
+    display: inline;
     vertical-align: top;
     margin: 0 auto;
     max-width: 150px;
@@ -296,8 +297,22 @@ ul.wpbdp-categories > li {
     margin: 0;
 }
 
+.wpbdp-submit-page legend {
+    font-size: 85%;
+    margin-bottom: 20px;
+}
+
 .wpbdp-submit-page .wpbdp-form-field {
     margin-bottom: 8px;
+}
+
+.wpbdp-submit-page .wpbdp-form-field .wpbdmcheckboxclass checkbox {
+    margin-left: 0px;
+}
+
+.wpbdp-submit-page .wpbdp-form-field.required .wpbdp-form-field-label:after {
+    content: ' *';
+    font-size: 80%;
 }
 
 .wpbdp-form-field .field-description {
@@ -381,11 +396,23 @@ ul.validation-errors li {
 
 /*.wpbusdirmanerroralert { color:#ff0000;font-weight:bold;font-size:14px; }*/
 
-.wpbdp-submit-page .fee-options .fee-option .fee-label {
+.wpbdp-submit-page table.fee-options {
+    width: 100%;
+}
+
+.wpbdp-submit-page table.fee-options th, .wpbdp-submit-page table.fee-options td {
+    text-align: center;
+}
+
+.wpbdp-submit-page table.fee-options .fee-selection {
+    width: 5%;
+}
+
+.wpbdp-submit-page table.fee-options tr.fee-option td.fee-label {
     font-weight: bold;
 }
 
-.wpbdp-submit-page .fee-options .fee-description {
+.wpbdp-submit-page table.fee-options td.fee-description {
     font-size: 90%;
     color: #666;
 }
@@ -418,4 +445,16 @@ ul.validation-errors li {
 #wpbdp-renewal-page .do-not-renew-listing input[type="submit"] {
     /*border: solid 1px #bc0b0b;*/
     color: #900000;
+}
+
+.widget_wpbdp_featuredlistingswidget .listing-thumbnail img {
+    max-width: 100%;
+}
+
+.widget_wpbdp_featuredlistingswidget li {
+    margin-bottom: 4px;
+}
+
+.wpbdp-recaptcha-error {
+    color: #ff0000;
 }

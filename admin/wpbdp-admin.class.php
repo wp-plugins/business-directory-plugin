@@ -4,6 +4,7 @@ require_once(WPBDP_PATH . 'admin/fees.php');
 require_once(WPBDP_PATH . 'admin/form-fields.php');
 require_once( WPBDP_PATH . 'admin/transactions.php' );
 require_once(WPBDP_PATH . 'admin/csv-import.php');
+require_once( WPBDP_PATH . 'admin/csv-export.php' );
 
 if (!class_exists('WPBDP_Admin')) {
 
@@ -12,7 +13,7 @@ class WPBDP_Admin {
     public $messages = array();
 
     function __construct() {
-        add_action('admin_init', array($this, '_debug_info_download'));
+        add_action('admin_init', array($this, '_handle_downloads'));
         add_action('admin_init', array($this, 'handle_actions'));
         add_action('admin_init', array($this, 'register_settings'));
         add_action('admin_init', array($this, 'add_metaboxes'));
@@ -22,8 +23,7 @@ class WPBDP_Admin {
         add_action('before_delete_post', array($this, '_delete_post_metadata'));
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_notices', array($this, 'admin_notices'));
-        add_action('admin_enqueue_scripts', array($this, 'admin_javascript'));
-        add_action('admin_enqueue_scripts', array($this, 'admin_styles'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
 
         add_filter('wp_dropdown_users', array($this, '_dropdown_users'));
 
@@ -46,19 +46,26 @@ class WPBDP_Admin {
 
         add_action( 'wp_ajax_wpbdp-renderfieldsettings', array( 'WPBDP_FormFieldsAdmin', '_render_field_settings' ) );
 
+        add_action( 'wp_ajax_wpbdp-set_site_tracking', 'WPBDP_SiteTracking::handle_ajax_response' );
+
         add_action('admin_footer', array($this, '_add_bulk_actions'));
         add_action('admin_footer', array($this, '_fix_new_links'));
     }
 
-    function admin_javascript() {
-        wp_enqueue_script('wpbdp-frontend-js', WPBDP_URL . 'resources/js/wpbdp.js', array('jquery'));
-        wp_enqueue_script('wpbdp-admin-js', WPBDP_URL . 'admin/resources/admin.js', array('jquery', 'thickbox'));
-    }
-
-    function admin_styles() {
+    function enqueue_scripts() {
         wp_enqueue_style('wpbdp-admin', WPBDP_URL . 'admin/resources/admin.css');
         wp_enqueue_style('thickbox');
-  }
+
+        wp_enqueue_script('wpbdp-frontend-js', WPBDP_URL . 'resources/js/wpbdp.js', array('jquery'));
+        wp_enqueue_script('wpbdp-admin-js', WPBDP_URL . 'admin/resources/admin.js', array('jquery', 'thickbox'));
+
+        // Ask for site tracking if needed.
+        if ( !wpbdp_get_option( 'tracking-on', false ) && !get_option( 'wpbdp-tracking-dismissed', false ) && current_user_can( 'administrator' ) ) {
+            wp_enqueue_style( 'wp-pointer' );
+            wp_enqueue_script( 'wp-pointer' );
+            add_action( 'admin_print_footer_scripts', 'WPBDP_SiteTracking::request_js' );
+        }
+    }
 
     function admin_menu() {
         add_menu_page(_x("Business Directory Admin", 'admin menu', "WPBDM"),
@@ -127,11 +134,17 @@ class WPBDP_Admin {
                          'wpbdp-csv-import',
                          array('WPBDP_CSVImportAdmin', 'admin_menu_cb'));
         add_submenu_page( 'wpbdp_admin',
+                          _x( 'CSV Export', 'admin menu', 'WPBDM' ),
+                          _x( 'CSV Export', 'admin menu', 'WPBDM' ),
+                          'activate_plugins',
+                          'wpbdp-csv-export',
+                          array( 'WPBDP_Admin_CSVExport', 'menu_callback' ) );
+        add_submenu_page( 'wpbdp_admin',
                           _x( 'Debug', 'admin menu', 'WPBDM' ),
                           _x( 'Debug', 'admin menu', 'WPBDM' ),
                           'activate_plugins',
                           'wpbdp-debug-info',
-                          array( $this, '_debug_info_page' ) );
+                          array( $this, '_debug_info_page' ) );        
 
         // XXX: just a little hack
         global $submenu;
@@ -434,11 +447,14 @@ class WPBDP_Admin {
 
         // Fees
         $expired_categories_ids = $listings_api->get_expired_categories( $post->ID );
-        $expired_categories = get_terms( WPBDP_CATEGORY_TAX, array( 'hide_empty' => false, 'hierarchical' => false, 'include' => $expired_categories_ids ? $expired_categories_ids : array( 0 ) ) );
+        $current_categories = wp_get_post_terms( $post->ID, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
+        $post_categories = array_unique( array_merge( $current_categories, $expired_categories_ids ) );
+
+        ;
 
         echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/infometabox-fees.tpl.php', array(
-                                'post_categories' => array_merge( wp_get_post_terms( $post->ID, WPBDP_CATEGORY_TAX ), $expired_categories ),
-                                'expired_categories' => $expired_categories,
+                                'post_categories' => get_terms( WPBDP_CATEGORY_TAX, array( 'hide_empty' => false, 'hierarchical' => false, 'include' => $post_categories ? $post_categories : array( 0 ) ) ),
+                                'expired_categories' => $expired_categories_ids,
                                 'post_id' => $post->ID,
                                 'image_count' => count($listings_api->get_images($post->ID))
                                 ));
@@ -480,6 +496,8 @@ class WPBDP_Admin {
     }
 
     function admin_notices() {
+        $this->check_setup();
+
         foreach ($this->messages as $msg) {
             if (is_array($msg)) {
                 echo sprintf('<div class="%s"><p>%s</p></div>', $msg[1], $msg[0]);
@@ -646,7 +664,7 @@ class WPBDP_Admin {
 
             case 'assignfee':
                 if ($listings_api->assign_fee($posts[0], $_GET['category_id'], $_GET['fee_id']))
-                    $this->messages[] = _x('The fee was successfully assigned.', 'admin', 'WBPDM');
+                    $this->messages[] = _x('The fee was successfully assigned.', 'admin', 'WPBDM');
                 break;
 
             case 'removecategory':
@@ -662,11 +680,19 @@ class WPBDP_Admin {
                 $this->messages[] = _nx( 'Listing was renewed.', 'Listings were renewed.', count( $posts ), 'admin', 'WPBDM' );
                 break;
 
+            case 'send-renewal-email':
+                $renewal_id = intval( $_GET['renewal_id'] );
+
+                if ( $listings_api->send_renewal_email( $renewal_id ) )
+                    $this->messages[] = _x( 'Renewal email sent.', 'admin', 'WPBDM' );
+                
+                break;
+
             default:
                 break;
         }
 
-        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id', 'u'), $_SERVER['REQUEST_URI'] );
+        $_SERVER['REQUEST_URI'] = remove_query_arg( array('wpbdmaction', 'wpbdmfilter', 'transaction_id', 'category_id', 'fee_id', 'u', 'renewal_id'), $_SERVER['REQUEST_URI'] );
     }
 
     public function _dropdown_users($output) {
@@ -713,7 +739,7 @@ class WPBDP_Admin {
                                                                WPBDP_POST_TYPE,
                                                                '_wpbdp[sticky]',
                                                                'pending') );
-            $expired = $wpdb->get_var( $wpdb->prepare( "SELECT DISTINCT COUNT(*) FROM {$wpdb->posts} p WHERE p.ID IN ( SELECT listing_id FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on < %s )",
+            $expired = $wpdb->get_var( $wpdb->prepare( "SELECT DISTINCT COUNT(p.ID) FROM {$wpdb->posts} p INNER JOIN {$wpdb->prefix}wpbdp_listing_fees lf ON lf.listing_id = p.ID WHERE lf.expires_on < %s",
                                                        current_time( 'mysql' ) ) );
 
             $views['paid'] = sprintf('<a href="%s" class="%s">%s <span class="count">(%s)</span></a>',
@@ -809,7 +835,7 @@ class WPBDP_Admin {
 
         $expired_categories = wpbdp_listings_api()->get_expired_categories( $post->ID );
         $current_categories = wp_get_post_terms( $post->ID, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
-        $categories = array_merge( $current_categories, $expired_categories );
+        $categories = array_unique( array_merge( $current_categories, $expired_categories ) );
 
         foreach ( $categories as $i => $category_id ) {
             if ( $term = get_term( $category_id, WPBDP_CATEGORY_TAX, OBJECT, 'display' ) ) {
@@ -945,20 +971,36 @@ class WPBDP_Admin {
     }
 
     /* Debug info page. */
-    public function _debug_info_download() {
+    public function _handle_downloads() {
         global $pagenow;
 
-        if ( current_user_can( 'administrator' )
-             && $pagenow == 'admin.php'
-             && isset( $_GET['page'] ) && $_GET['page'] == 'wpbdp-debug-info'
-             && isset( $_GET['download'] ) && $_GET['download'] == 1 ) {
-            header( 'Content-Description: File Transfer' );
-            header( 'Content-Type: text/plain; charset=' . get_option( 'blog_charset' ), true );
-            header( 'Content-Disposition: attachment; filename=' . 'wpbdp-debug-info.txt' );
-            header( 'Pragma: no-cache' );
-            $this->_debug_info_page( true );
-            exit;
+        if ( !current_user_can( 'administrator' ) || $pagenow != 'admin.php' || !isset( $_GET['page'] ) )
+            return;
+
+        switch ( $_GET['page'] ) {
+            case 'wpbdp-debug-info':
+                if ( isset( $_GET['download'] ) && $_GET['download'] == 1 ) {
+                    header( 'Content-Description: File Transfer' );
+                    header( 'Content-Type: text/plain; charset=' . get_option( 'blog_charset' ), true );
+                    header( 'Content-Disposition: attachment; filename=' . 'wpbdp-debug-info.txt' );
+                    header( 'Pragma: no-cache' );
+                    $this->_debug_info_page( true );
+                    exit;
+                }
+
+                break;
+
+            case 'wpbdp-csv-export':
+                if ( isset( $_POST['action'] ) && $_POST['action'] == 'do-export' ) {
+                    WPBDP_Admin_CSVExport::download();
+                }
+
+                break;
+
+            default:
+                break;
         }
+
     }
 
     public function _debug_info_page( $plain=false ) {
@@ -1108,6 +1150,18 @@ class WPBDP_Admin {
         }
     }
 
+    public function check_setup() {
+        global $pagenow;
+
+        if ( $pagenow == 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] == 'wpbdp_admin_settings' ) {
+            if ( wpbdp_get_option( 'require-login' ) && !get_option( 'users_can_register' ) ) {
+                $this->messages[] = array(
+                    str_replace( array( '[', ']' ), array( '<a href="' . admin_url( 'options-general.php' )  . '">', '</a>' ), _x( 'We noticed you want your Business Directory users to register before posting listings, but Registration for your site is currently disabled. Go [here] and check "Anyone can register" to make sure BD works properly.', 'admin', 'WPBDM' ) ),
+                    'error' );
+            }
+        }
+
+    }
 
 }
 

@@ -11,12 +11,24 @@ class WPBDP_Settings {
         $this->groups = array();
         $this->settings = array();
 
-        $this->register_settings();
+        add_action( 'plugins_loaded', array( &$this, 'register_settings' ), 20 );
     }
 
-    private function register_settings() {
+    public function register_settings() {
         /* General settings */
         $g = $this->add_group('general', _x('General', 'admin settings', 'WPBDM'));
+
+        $s = $this->add_section( $g, 'tracking', _x( 'Data Collection', 'admin settings', 'WPBDM' ) );
+        $this->add_setting( $s,
+                            'tracking-on',
+                            _x( 'Allow BD to anonymously collect information about your installed plugins, themes and WP version?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false,
+                            str_replace( '<a>',
+                                         '<a href="http://businessdirectoryplugin.com/what-we-track/" target="_blank">',
+                                         _x( '<a>Learn more</a> about what BD does and does NOT track.', 'admin settings', 'WPBDM' ) )
+                          );
+
         $s = $this->add_section($g, 'permalink', _x('Permalink Settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'permalinks-directory-slug', _x('Directory Listings Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_POST_TYPE, null, null, array($this, '_validate_listings_permalink'));
         $this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_CATEGORY_TAX, _x('The slug can\'t be in use by another term. Avoid "category", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
@@ -31,8 +43,31 @@ class WPBDP_Settings {
                                 );
         $this->add_setting($s, 'recaptcha-on', _x('Use reCAPTCHA for contact forms', 'admin settings', 'WPBDM'), 'boolean', false);
         $this->add_setting($s, 'recaptcha-for-submits', _x('Use reCAPTCHA for listing submits', 'admin settings', 'WPBDM'), 'boolean', false);
+        $this->add_setting( $s,
+                            'recaptcha-for-comments',
+                            _x( 'Use reCAPTCHA for listing comments?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false );
         $this->add_setting($s, 'recaptcha-public-key', _x('reCAPTCHA Public Key', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'recaptcha-private-key', _x('reCAPTCHA Private Key', 'admin settings', 'WPBDM'));
+
+        $s = $this->add_section( $g,
+                                 'terms-and-conditions',
+                                 _x( 'Terms and Conditions', 'admin settings', 'WPBDM' ) );
+        $this->add_setting( $s,
+                            'display-terms-and-conditions',
+                            _x( 'Display and require user agreement to Terms and Conditions', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false
+                          );
+        $this->add_setting( $s,
+                            'terms-and-conditions',
+                            _x( 'Terms and Conditions', 'admin settings', 'WPBDM' ),
+                            'text',
+                            "Terms and Conditions text goes here...\n\n",
+                            _x( 'Enter text or a URL starting with http. If you use a URL, the Terms and Conditions text will be replaced by a link to the appropiate page.', 'admin settings', 'WPBDM' ),
+                            array( 'use_textarea' => true )
+                            );
 
         $s = $this->add_section($g, 'displayoptions', _x('Directory Display Options', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'show-submit-listing', _x('Show the "Submit listing" button.', 'admin settings', 'WPBDM'), 'boolean', true);
@@ -79,6 +114,18 @@ class WPBDP_Settings {
                            array('choices' => array('draft', 'trash')));
 
         $s = $this->add_section($g, 'listings/email', _x('Listing email settings', 'admin settings', 'WPBDM'));
+        $this->add_setting( $s,
+                            'listing-email-mode',
+                            _x( 'How to determine the listing\'s email address?', 'admin settings', 'WPBDM' ),
+                            'choice',
+                            'field',
+                            _x( 'This affects emails sent to listing owners via contact forms or when their listings expire.', 'admin settings', 'WPBDM' ),
+                            array( 'choices' => array(
+                                array( 'field', 'Try listing\'s email field first, then author\'s email.' ),
+                                array( 'user',  'Try author\'s email first and then listing\'s email field.' )
+
+                            ) ) );
+
         $this->add_setting( $s, 'notify-admin', _x( 'Notify admin of new listings via email?', 'admin settings', 'WPBDM' ), 'boolean', false );
         $this->add_setting($s, 'send-email-confirmation', _x('Send email confirmation to listing owner when listing is submitted?', 'admin settings', 'WPBDM'), 'boolean', false);
         $this->add_setting($s, 'email-confirmation-message', _x('Email confirmation message', 'admin settings', 'WPBDM'), 'text',
@@ -98,10 +145,38 @@ class WPBDP_Settings {
                             'renewal-pending-message',
                             _x( 'Pending expiration e-mail message', 'admin settings', 'WPBDM' ),
                             'text',
-                            self::_EMAIL_PENDING_RENEWAL_MESSAGE );
-        $this->add_setting($s, 'listing-renewal-message', _x('Listing Renewal e-mail message', 'admin settings', 'WPBDM'), 'text',
-                           self::_EMAIL_RENEWAL_MESSAGE,
-                           _x('You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date and [link] for the actual renewal link.', 'admin settings', 'WPBDM'));
+                            self::_EMAIL_PENDING_RENEWAL_MESSAGE,
+                            '',
+                            array( 'use_textarea' => true ));
+        $this->add_setting( $s,
+                            'listing-renewal-message', _x('Listing Renewal e-mail message', 'admin settings', 'WPBDM'),
+                            'text',
+                            self::_EMAIL_RENEWAL_MESSAGE,
+                            _x( 'You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date and [link] for the actual renewal link.', 'admin settings', 'WPBDM' ),
+                            array( 'use_textarea' => true )
+                          );
+
+        // Renewal Reminders
+        $this->add_setting( $s,
+                            'renewal-reminder',
+                            _x( 'Remind listing owners of expired listings (past due)?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false );
+        $this->add_setting( $s,
+                            'renewal-reminder-threshold',
+                            _x( 'Listing renewal reminder e-mail threshold (in days)', 'admin settings', 'WPBDM' ),
+                            'text',
+                            '10',
+                            _x( 'Configure how many days after the expiration of a listing an e-mail reminder should be sent to the owner.', 'admin settings', 'WPBDM' )
+                          );
+        $this->add_setting( $s,
+                            'renewal-reminder-message',
+                            _x( 'Renewal reminder e-mail message', 'admin settings', 'WPBDM' ),
+                            'text',
+                            "Dear Costumer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link].",
+                            _x( 'You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date, [site] for this site\'s URL and [link] for the actual renewal link.', 'admin settings', 'WPBDM' ),
+                            array( 'use_textarea' => true )
+                          );
 
         $s = $this->add_section($g, 'post/category', _x('Post/Category Settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'new-post-status', _x('Default new post status', 'admin settings', 'WPBDM'), 'choice', 'pending', '',
@@ -110,14 +185,24 @@ class WPBDP_Settings {
         $this->add_setting($s, 'edit-post-status', _x('Edit post status', 'admin settings', 'WPBDM'), 'choice', 'publish', '',
                            array('choices' => array('publish', 'pending')));
         $this->add_setting( $s, 'categories-order-by', _x('Order categories list by', 'admin settings', 'WPBDM'), 'choice', 'name', '',
-                           array('choices' => array('name', 'ID', 'slug', 'count', 'term_group')));
+                           array('choices' => array(
+                            array( 'name', _x( 'Name', 'admin settings', 'WPBDM' ) ),
+                            array( 'slug', _x( 'Slug', 'admin settings', 'WPBDM' ) ),
+                            array( 'count', _x( 'Listing Count', 'admin settings', 'WPBDM' ) )
+                           )) );
         $this->add_setting( $s, 'categories-sort', _x('Sort order for categories', 'admin settings', 'WPBDM'), 'choice', 'ASC', '',
                            array('choices' => array(array('ASC', _x('Ascending', 'admin settings', 'WPBDM')), array('DESC', _x('Descending', 'admin settings', 'WPBDM')))));
         $this->add_setting($s, 'show-category-post-count', _x('Show category post count?', 'admin settings', 'WPBDM'), 'boolean', true);
         $this->add_setting($s, 'hide-empty-categories', _x('Hide empty categories?', 'admin settings', 'WPBDM'), 'boolean', true);
         $this->add_setting($s, 'show-only-parent-categories', _x('Show only parent categories in category list?', 'admin settings', 'WPBDM'), 'boolean', false);
         $this->add_setting($s, 'listings-order-by', _x('Order directory listings by', 'admin settings', 'WPBDM'), 'choice', 'title', '',
-                          array('choices' => array('date', 'title', 'id', 'author', 'modified')));
+                          array('choices' => array(
+                            array( 'title', _x( 'Title', 'admin settings', 'WPBDM' ) ),
+                            array( 'author', _x( 'Author', 'admin settings', 'WPBDM' ) ),
+                            array( 'date', _x( 'Date posted', 'admin settings', 'WPBDM' ) ),
+                            array( 'modified', _x( 'Date last modified', 'admin settings', 'WPBDM' ) ),
+                            array( 'rand', _x( 'Random', 'admin settings', 'WPBDM' ) )
+                          )));
         $this->add_setting( $s, 'listings-sort', _x('Sort directory listings by', 'admin settings', 'WPBDM'), 'choice', 'ASC',
                            _x('Ascending for ascending order A-Z, Descending for descending order Z-A', 'admin settings', 'WPBDM'),
                            array('choices' => array(array('ASC', _x('Ascending', 'admin settings', 'WPBDM')), array('DESC', _x('Descending', 'admin settings', 'WPBDM')))));
@@ -398,8 +483,8 @@ class WPBDP_Settings {
         ob_end_clean();
 
         $html .= $custom_content;
-        
-        echo $html;
+
+        echo apply_filters( 'wpbdp_settings_render', $html, $setting, $args );
     }
 
     public function _setting_text($args) {
@@ -409,14 +494,14 @@ class WPBDP_Settings {
         if (isset($args['use_textarea']) || strlen($value) > 100) {
             $html  = '<textarea id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" cols="50" rows="2">';
             $html .= esc_textarea($value);
-            $html .= '</textarea>';
+            $html .= '</textarea><br />';
         } else {
             $html = '<input type="text" id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" value="' . esc_attr( $value ) . '" size="' . (strlen($value) > 0 ? strlen($value) : 20). '" />';
         }
 
         $html .= '<span class="description">' . $setting->help_text . '</span>';
 
-        echo $html;
+        echo apply_filters( 'wpbdp_settings_render', $html, $setting, $args );
     }
 
     public function _setting_boolean($args) {
@@ -430,7 +515,7 @@ class WPBDP_Settings {
         $html .= '&nbsp;<span class="description">' . $setting->help_text . '</span>';
         $html .= '</label>';
 
-        echo $html;
+        echo apply_filters( 'wpbdp_settings_render', $html, $setting, $args );
     }
 
     public function _setting_choice($args) {
@@ -439,20 +524,36 @@ class WPBDP_Settings {
 
         $value = $this->get($setting->name);
 
-        $html = '<select id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '">';
-        
-        foreach ($choices as $ch) {
-            $opt_label = is_array($ch) ? $ch[1] : $ch;
-            $opt_value = is_array($ch) ? $ch[0] : $ch;
+        $multiple = isset( $args['multiple'] ) && $args['multiple'] ? true : false;
+        $widget = $multiple ? ( isset( $args['use_checkboxes'] ) && $args['use_checkboxes'] ? 'checkbox' : 'multiselect' ) : 'select'; // TODO: Add support for radios.
+        $html = '';
 
-            $html .= '<option value="' . $opt_value . '"' . ($value == $opt_value ? ' selected="selected"' : '') . '>'
-                            . $opt_label . '</option>';
+        if ( $widget == 'select' || $widget == 'multiselect' ) {
+            // TODO: Add support for multiple.
+            $html .= '<select id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '">';
+            
+            foreach ($choices as $ch) {
+                $opt_label = is_array($ch) ? $ch[1] : $ch;
+                $opt_value = is_array($ch) ? $ch[0] : $ch;
+
+                $html .= '<option value="' . $opt_value . '"' . ($value == $opt_value ? ' selected="selected"' : '') . '>'
+                                . $opt_label . '</option>';
+            }
+
+            $html .= '</select>';
+        } elseif ( $widget == 'checkbox' ) {
+            foreach ( $choices as $k => $v ) {
+                $html .= sprintf( '<label><input type="checkbox" name="%s[]" value="%s" %s />%s</label> ',
+                                  $setting->name,
+                                  $k,
+                                  in_array( $k, $value, true ) ? 'checked="checked"' : '',
+                                  $v );
+            }
         }
 
-        $html .= '</select>';
         $html .= '<span class="description">' . $setting->help_text . '</span>';
 
-        echo $html;
+        echo apply_filters( 'wpbdp_settings_render', $html, $setting, $args );
     }
 
     public function register_in_admin() {
@@ -474,17 +575,29 @@ class WPBDP_Settings {
                                        array_merge($setting->args, array('label_for' => $setting->name, 'setting' => $setting))
                                        );
 
-                    if ($setting->validator) {
-                        add_filter('pre_update_option_' . self::PREFIX . $setting->name, create_function('$n', 'return WPBDP_Settings::_validate_setting("' . $setting->name . '", $n);'), 2);
+                    if ( $setting->validator || ( $setting->type == 'choice' && isset( $setting->args['multiple'] ) && $setting->args['multiple'] ) ) {
+                        add_filter('pre_update_option_' . self::PREFIX . $setting->name, create_function('$n, $o=null', 'return WPBDP_Settings::_validate_setting("' . $setting->name . '", $n, $o);'), 2);
                     }
                 }
             }
         }
     }
 
-    public static function _validate_setting($name, $newvalue=null) {
+    public static function _validate_setting($name, $newvalue=null, $oldvalue=null) {
         $api = wpbdp_settings_api();
         $setting = $api->settings[$name];
+
+        if ( $setting->type == 'choice' && isset( $setting->args['multiple'] ) && $setting->args['multiple'] ) {
+            if ( isset( $_POST[ $name ] ) ) {
+                $newvalue = $_POST[ $name ];
+                $newvalue = is_array( $newvalue ) ? $newvalue : array( $newvalue );
+
+                if ( $setting->validator )
+                    $newvalue = call_user_func( $setting->validator, $setting, $newvalue, $api->get( $setting->name ) );
+
+                return $newvalue;
+            }
+        }
 
         return call_user_func($setting->validator, $setting, $newvalue, $api->get($setting->name));
     }

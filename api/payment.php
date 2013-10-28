@@ -24,6 +24,7 @@ class WPBDP_FeesAPI {
 
     private function normalize(&$fee) {
         $fee->categories = unserialize($fee->categories);
+        $fee->extra_data = unserialize( $fee->extra_data );
     }
 
     public function get_fees_for_category($catid) {
@@ -149,6 +150,15 @@ class WPBDP_FeesAPI {
 
         if ($this->is_valid_fee($fee, $errors)) {
             $fee['categories'] = serialize($fee['categories']);
+
+            if ( isset( $fee['id'] ) && !isset( $fee['extra_data'] ) )
+                $fee['extra_data'] = unserialize( $wpdb->get_var( $wpdb->prepare( "SELECT extra_data FROM {$wpdb->prefix}wpbdp_fees WHERE id = %d", $fee['id'] ) ) );
+            
+            if ( !isset( $fee['extra_data'] ) || !is_array( $fee['extra_data'] ) )
+                $fee['extra_data'] = array();
+
+            do_action_ref_array( 'wpbdp_fee_before_save', array( &$fee ) );
+            $fee['extra_data'] = $fee['extra_data'] ? serialize( $fee['extra_data'] ) : null;
             
             if (isset($fee['id'])) {
                 return $wpdb->update("{$wpdb->prefix}wpbdp_fees", $fee, array('id' => $fee['id'])) !== false;
@@ -276,8 +286,8 @@ class WPBDP_PaymentsAPI {
             $gateway_errors = call_user_func($gateway->check_callback);
 
             if ($gateway_errors) {
-                $gateway_messages = rtrim('&#149; ' . implode('&#149; ', $gateway_errors), '.');
-                $errors[] = sprintf(_x('The <b>%s</b> gateway is activate but not properly configured. The gateway won\'t be available until the following problems are fixed: <b>%s</b>. <br/> Check the <a href="%s">payment settings</a>.', 'payments-api', 'WPBDM'),
+                $gateway_messages = rtrim('&#149; ' . implode(' &#149; ', $gateway_errors), '.');
+                $errors[] = sprintf(_x('The <b>%s</b> gateway is active but not properly configured. The gateway won\'t be available until the following problems are fixed: <b>%s</b>. <br/> Check the <a href="%s">payment settings</a>.', 'payments-api', 'WPBDM'),
                                         $gateway->name,
                                         $gateway_messages,
                                         admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment') );
@@ -289,6 +299,10 @@ class WPBDP_PaymentsAPI {
         if (!$gateway_available) {
             $errors[] = sprintf(_x('You have payments turned on but no gateway is active and properly configured. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the directory will operate in <i>Free Mode</i>.', 'admin', 'WPBDM'),
                                 admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment'));
+        } else {
+            if ( count( $this->gateways ) >= 2 && $this->has_gateway( 'payfast' ) ) {
+                $errors[] = __( 'BD detected PayFast and another gateway were enabled. This setup is not recommended due to PayFast supporting only ZAR and the other gateways not supporting this currency.', 'admin', 'WPBDM' );
+            }
         }
 
         return $errors;

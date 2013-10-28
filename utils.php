@@ -18,8 +18,8 @@ class WPBDP_Debugging {
 		add_action('wp_head', array('WPBDP_Debugging', '_print_styles'));
 		add_action('admin_print_styles', array('WPBDP_Debugging', '_print_styles'));
 		add_action('admin_notices', array('WPBDP_Debugging', '_debug_bar_head'));
-		add_action('admin_footer', array('WPBDP_Debugging', '_debug_bar_footer'));
-		add_action('wp_footer', array('WPBDP_Debugging', '_debug_bar_footer'));
+		add_action('admin_footer', array('WPBDP_Debugging', '_debug_bar_footer'), 99999);
+		add_action('wp_footer', array('WPBDP_Debugging', '_debug_bar_footer'), 99999);
 	}
 
 	public static function _php_error_handler($errno, $errstr, $file, $line, $context) {
@@ -311,6 +311,49 @@ function wpbdp_capture_action($hook) {
 	return $output;
 }
 
+function wpbdp_capture_action_array($hook, $args=array()) {
+	$output = '';
+
+	ob_start();
+	do_action_ref_array($hook, $args);
+	$output = ob_get_contents();
+	ob_end_clean();
+
+	return $output;
+}
+
+function wpbdp_media_upload_check_env( &$error ) {
+	if ( empty( $_FILES ) && empty( $_POST ) && isset( $_SERVER['REQUEST_METHOD'] ) &&
+		 strtolower( $_SERVER['REQUEST_METHOD'] ) == 'post' ) {
+		$post_max = wpbdp_php_ini_size_to_bytes( ini_get( 'post_max_size' ) );
+		$posted_size = intval( $_SERVER['CONTENT_LENGTH'] );
+
+		if ( $posted_size > $post_max ) {
+			$error = _x( 'POSTed data exceeds PHP config. maximum. See "post_max_size" directive.', 'utils', 'WPBDM' );
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function wpbdp_php_ini_size_to_bytes( $val ) {
+	$val = trim( $val );
+	$size = intval( $val );
+	$unit = strtoupper( $val[strlen($val) - 1] );
+
+	switch ( $unit ) {
+		case 'G':
+			$size *= 1024;
+		case 'M':
+			$size *= 1024;
+		case 'K':
+			$size *= 1024;
+	}
+
+	return $size;
+}
+
 /**
  * @since 2.1.6
  */
@@ -321,7 +364,8 @@ function wpbdp_media_upload($file, $use_media_library=true, $check_image=false, 
 	// TODO(future): it could be useful to have additional constraints available
 	$constraints = array_merge( array(
 									'image' => false,
-									'max-size' => 0
+									'max-size' => 0,
+									'mimetypes' => null
 							  ), $constraints );
 
 	if ($file['error'] == 0) {
@@ -333,10 +377,19 @@ function wpbdp_media_upload($file, $use_media_library=true, $check_image=false, 
 			return false;
 		}
 
+		if ( is_array( $constraints['mimetypes'] ) ) {
+			if ( !in_array( strtolower( $file['type'] ), $constraints['mimetypes'] ) ) {
+				$error_msg = sprintf( _x( 'File type "%s" is not allowed', 'utils', 'WPBDM' ), $file['type'] );
+				return false;
+			}
+		}
+
 		if ( $upload = wp_handle_upload( $file, array('test_form' => FALSE) ) ) {
 			if ( !$use_media_library ) {
-				if (!is_array($upload) || isset($upload['error']))
+				if (!is_array($upload) || isset($upload['error'])) {
+					$error_msg = $upload['error'];
 					return false;
+				}
 				
 				return $upload;
 			}

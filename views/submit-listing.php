@@ -44,7 +44,7 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
         $state->edit = true;
         $state->categories = wp_get_post_terms( $listing_id, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
 
-        // recover fee info
+        // Recover fee information.
         $fees = wpbdp_listings_api()->get_listing_fees( $listing_id );
         foreach ( $fees as &$fee ) {
             $fee_ = (object) unserialize( $fee->fee );
@@ -53,16 +53,19 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
             $state->allowed_images += intval( $fee_->images );
         }
 
-        // image info
+        // Image information.
         $images = wpbdp_listings_api()->get_images( $listing_id );
         $state->images = array_map( create_function( '$x', 'return $x->ID;' ), $images );
         $state->thumbnail_id = intval( wpbdp_listings_api()->get_thumbnail_id( $listing_id ) );
 
-        // fields
+        // Fields.
         $fields = wpbdp_get_form_fields( array( 'association' => '-category' ) );
         foreach ( $fields as &$f ) {
             $state->fields[ $f->get_id() ] = $f->value( $listing_id );
         }
+
+        // Recover additional information.
+        do_action_ref_array( 'wpbdp_submit_state_init', array( &$state ) );
 
         return $state;
     }
@@ -293,10 +296,19 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
                     $validation_errors = array_merge( $validation_errors, $field_errors );
             }
 
+            if ( !$this->state->edit && !current_user_can( 'administrator' ) && wpbdp_get_option( 'display-terms-and-conditions' ) ) {
+                $tos = trim( wpbdp_get_option( 'terms-and-conditions' ) );
+
+                if ( $tos && ( !isset( $_POST['terms-and-conditions-agreement'] ) || $_POST['terms-and-conditions-agreement'] != 1 ) ) {
+                    $validation_errors[] = _x( 'Please agree to the Terms and Conditions.', 'templates', 'WPBDM' );
+                }
+            }
+
             if ( wpbdp_get_option('recaptcha-for-submits') ) {
                 if ( $private_key = wpbdp_get_option( 'recaptcha-private-key' ) ) {
                     if ( isset( $_POST['recaptcha_challenge_field'] ) ) {
-                        require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
+                        if ( !function_exists( 'recaptcha_get_html' ) )
+                            require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
 
                         $resp = recaptcha_check_answer( $private_key, $_SERVER['REMOTE_ADDR'], $_POST['recaptcha_challenge_field'], $_POST['recaptcha_response_field'] );
                         if (!$resp->is_valid)
@@ -310,10 +322,41 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
             }
         }
 
+        $terms_field = '';
+        if ( !$this->state->edit /*&& !current_user_can( 'administrator' ) */&& wpbdp_get_option( 'display-terms-and-conditions' ) ) {
+            $tos = trim( wpbdp_get_option( 'terms-and-conditions' ) );
+
+            if ( $tos ) {
+                if ( wpbdp_starts_with( $tos, 'http://', false ) || wpbdp_starts_with( $tos, 'https://', false ) ) {
+                    $terms_field .= sprintf( '<a href="%s" target="_blank">%s</a>',
+                                             esc_url( $tos ),
+                                             _x( 'Read our Terms and Conditions', 'templates', 'WPBDM' )
+                                           );
+                } else {
+                    $terms_field .= '<div class="wpbdp-form-field-label">';
+                    $terms_field .= '<label>';
+                    $terms_field .= _x( 'Terms and Conditions:', 'templates', 'WPBDM' );
+                    $terms_field .= '</label>';
+                    $terms_field .= '</div>';
+                    $terms_field .= '<div class="wpbdp-form-field-html wpbdp-form-field-inner">';
+                    $terms_field .= sprintf( '<textarea readonly="readonly" rows="5" cols="50">%s</textarea>',
+                                             esc_textarea( $tos ) );
+                    $terms_field .= '</div>';
+                }
+
+                $terms_field .= '<label>';
+                $terms_field .= '<input type="checkbox" name="terms-and-conditions-agreement" value="1" />';
+                $terms_field .= _x( 'I agree to the Terms and Conditions', 'templates', 'WPBDM' );
+                $terms_field .= '</label>';
+            }
+        }
+
         $recaptcha = '';
         if ( wpbdp_get_option('recaptcha-for-submits') ) {
             if ( $public_key = wpbdp_get_option( 'recaptcha-public-key' ) ) {
-                require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
+                if ( !function_exists( 'recaptcha_get_html' ) )
+                    require_once( WPBDP_PATH . 'recaptcha/recaptchalib.php' );
+                
                 $recaptcha = recaptcha_get_html( $public_key );
             }
         }
@@ -322,7 +365,8 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
                               array(
                                     'fields' => $fields,
                                     'validation_errors' => $validation_errors,
-                                    'recaptcha' => $recaptcha
+                                    'recaptcha' => $recaptcha,
+                                    'terms_and_conditions' => $terms_field
                                    )
                             );
     }
@@ -336,7 +380,11 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
             return $this->step_before_save();
 
         // sanitize $state->images just in case something disappeared (who knows)
-        $this->state->images = array_filter( $this->state->images, create_function( '$x', 'return get_post($x) !== null;' ) );        
+        $this->state->images = array_filter( $this->state->images, create_function( '$x', 'return get_post($x) !== null;' ) );
+
+        // Set thumbnail
+        $thumbnail_id = isset( $_POST['thumbnail_id'] ) ? intval( $_POST['thumbnail_id'] ) : $this->state->thumbnail_id;
+        $this->state->thumbnail_id = in_array( $thumbnail_id, $this->state->images ) ? $thumbnail_id : 0;
 
         if ( isset( $_POST['upload-image'] ) && ( ( $this->state->allowed_images - count( $this->state->images ) - 1 ) >= 0 ) ) {
             if ( $image_file = $_FILES[ 'image' ] ) {
@@ -362,8 +410,6 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
                 $this->messages[] = _x( 'Image deleted.', 'templates', 'WPBDM' );
             }
         } elseif ( isset( $_POST['finish'] ) ) {
-            $thumbnail_id = isset( $_POST['thumbnail_id'] ) ? intval( $_POST['thumbnail_id'] ) : 0;
-            $this->state->thumbnail_id = in_array( $thumbnail_id, $this->state->images ) ? $thumbnail_id : 0;
             return $this->step_before_save();
         }
 
@@ -372,7 +418,16 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
 
     protected function step_before_save() {
         $this->state->step = 'before_save';
-        // TODO: implement extra_sections here!
+
+        if ( isset( $_POST['continue-with-save'] ) )
+            return $this->step_save();
+
+        $extra = wpbdp_capture_action_array( 'wpbdp_listing_form_extra_sections',
+                                             array( &$this->state ) );
+
+        if ( $extra )
+            return $this->render( 'extra-sections', array( 'output' => $extra ) );
+
         return $this->step_save();
     }
 
@@ -391,6 +446,7 @@ class WPBDP_SubmitListingPage extends WPBDP_View {
         }
 
         $res = null;
+
         if ( $listing_id = wpbdp_save_listing( $this->state, $res ) ) {
             // TODO:
             // $_SESSION['wpbdp-submitted-listing-id'] = $listing_id;
@@ -455,4 +511,6 @@ class WPBDP_SubmitState {
     public $thumbnail_id = 0;
 
     public $fields = array();
+
+    public $extra = array();
 }

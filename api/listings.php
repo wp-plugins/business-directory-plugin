@@ -9,6 +9,10 @@ class WPBDP_ListingUpgrades {
     private static $instance = null;
 
     private function __construct() {
+        add_action( 'init', array( &$this, 'register_default_levels' ) );
+    }
+
+    public function register_default_levels() {
         // register default levels
         $this->register('normal', null, array(
             'name' => _x('Normal Listing', 'listings-api', 'WPBDM'),
@@ -373,7 +377,7 @@ class WPBDP_ListingsAPI {
             } else {
                 // assign a fee
                 $choices = $fees_api->get_fees_for_category($category->term_id);
-                $this->assign_fee($post_id, $category->term_id, $choices[0], $false);
+                $this->assign_fee($post_id, $category->term_id, $choices[0], false);
             }
         }
 
@@ -549,6 +553,8 @@ class WPBDP_ListingsAPI {
         if ($row != null) {
             $fee = unserialize($row->fee);
             $fee['expires_on'] = $row->expires_on;
+            $fee['renewal_id'] = $row->id;
+            $fee['category_id'] = $row->category_id;
             return (object) $fee;
         }
 
@@ -718,6 +724,9 @@ class WPBDP_ListingsAPI {
                                 //     $term = get_term_by( 'id', $term_name, WPBDP_TAGS_TAX );
 
                                 // if ( !$term )
+                                if ( strpos( $term_name, '&' ) !== false )
+                                    $term_name = htmlentities( $term_name, null, null, false );
+
                                 $term = get_term_by( 'name', $term_name, WPBDP_TAGS_TAX );
 
                                 if ( $term ) {
@@ -767,6 +776,56 @@ class WPBDP_ListingsAPI {
         return $wpdb->get_col($query);
     }
 
+    // TODO: use hashes to verify users.
+    public function get_renewal_url( $renewal_id ) {
+        return add_query_arg( array( 'action' => 'renewlisting', 'renewal_id' => $renewal_id ), wpbdp_get_page_link( 'main' ) );
+    }
+
+    public function send_renewal_email( $renewal_id, $email_message_type = 'auto' ) {
+        global $wpdb;
+
+        $renewal_id = intval( $renewal_id );
+        $fee_info = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d", $renewal_id ) );
+
+        if ( !$fee_info || !$fee_info->expires_on )
+            return false;
+
+        
+        $message_option = '';
+
+        if ( $email_message_type == 'auto' ) {
+            $expiration = strtotime( $fee_info->expires_on );
+            $current_time = time();
+
+            if ( $expiration > $current_time ) {
+                $message_option = 'renewal-pending-message';
+            } else {
+                $message_option = 'listing-renewal-message';
+            }
+        } elseif ( $email_message_type ) {
+            $message_option = $email_message_type;
+        } else {
+            $message_option = 'listing-renewal-message';
+        }
+
+        $renewal_url = $this->get_renewal_url( $fee_info->id );
+        $message_replacements = array( '[site]' => sprintf( '<a href="%s">%s</a>', get_bloginfo( 'url' ), get_bloginfo( 'name' ) ),
+                                       '[listing]' => esc_attr( get_the_title( $fee_info->listing_id ) ),
+                                       '[category]' => get_term( $fee_info->category_id, WPBDP_CATEGORY_TAX )->name,
+                                       '[expiration]' => date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $fee_info->expires_on ) ),
+                                       '[link]' => sprintf( '<a href="%1$s">%1$s</a>', $renewal_url )
+                                     );
+
+        $email = new WPBDP_Email();
+        $email->to[] = wpbusdirman_get_the_business_email( $fee_info->listing_id );        
+        $email->subject = sprintf( '[%s] %s', get_option( 'blogname' ), wp_kses( get_the_title( $fee_info->listing_id ), array() ) );
+        $email->body = str_replace( array_keys( $message_replacements ),
+                                    $message_replacements,
+                                    nl2br( wpbdp_get_option( $message_option ) ) );
+        $email->send();
+        return true;
+    }
+
 
     /**
      * Notifies listings expiring soon. Despite its name this function also changes listings according to expiration rules (removing categories, unpublishing, etc.).
@@ -778,23 +837,32 @@ class WPBDP_ListingsAPI {
     public function notify_expiring_listings( $threshold=0, $now=null ) {
         global $wpdb;
 
-        $threshold = max( 0, intval( $threshold ) );
+        $threshold = intval( $threshold );
         $now = $now > 0 ? intval( $now ) : current_time( 'timestamp' );
 
         $query = '';
         $now_date = wpbdp_format_time( $now, 'mysql' );
 
         if ( $threshold == 0 ) {
-            $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on < %s AND email_sent <> %d ORDER BY expires_on LIMIT 100",
+            $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on < %s AND email_sent <> %d AND email_sent <> %d ORDER BY expires_on LIMIT 100",
                                      $now_date,
-                                     2 );
+                                     2,
+                                     3 );
         } else {
-            $end_date = wpbdp_format_time( strtotime( sprintf( '+%d days', $threshold ), $now ), 'mysql' );
+            if ( $threshold > 0 ) {
+                $end_date = wpbdp_format_time( strtotime( sprintf( '+%d days', $threshold ), $now ), 'mysql' );
 
-            $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on >= %s AND expires_on <= %s AND email_sent = %d ORDER BY expires_on LIMIT 100",
-                                     $now_date,
-                                     $end_date,
-                                     0 );
+                $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on >= %s AND expires_on <= %s AND email_sent = %d ORDER BY expires_on LIMIT 100",
+                                         $now_date,
+                                         $end_date,
+                                         0 );
+            } else {
+                $exp_date = wpbdp_format_time( strtotime( sprintf( '%d days', $threshold ), $now ), 'mysql' );
+                
+                $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE expires_on IS NOT NULL AND expires_on < %s AND email_sent = %d",
+                                         $exp_date,
+                                         2 );
+            }
         }
 
         $rs = $wpdb->get_results( $query );
@@ -808,18 +876,17 @@ class WPBDP_ListingsAPI {
             if ( !$listing || $listing->post_type != WPBDP_POST_TYPE )
                 continue;
 
-            if ( !has_term( intval( $r->category_id ), WPBDP_CATEGORY_TAX, $r->listing_id ) ) {
+            /*if ( !has_term( intval( $r->category_id ), WPBDP_CATEGORY_TAX, $r->listing_id ) && !in_array( $r->category_id, $this->get_expired_categories( $r->listing_id ) ) ) {
                 $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->prefix}wpbdp_listing_fees WHERE id = %d", $r->id ) );
                 continue;
-            }
+            }*/
 
+            $renewal_url = $this->get_renewal_url( $r->id );
             $message_replacements = array( '[site]' => sprintf( '<a href="%s">%s</a>', get_bloginfo( 'url' ), get_bloginfo( 'name' ) ),
                                            '[listing]' => esc_attr( $listing->post_title ),
                                            '[category]' => get_term( $r->category_id, WPBDP_CATEGORY_TAX )->name,
                                            '[expiration]' => date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $r->expires_on ) ),
-                                           '[link]' => sprintf( '<a href="%1$s">%1$s</a>',
-                                                                add_query_arg( array( 'action' => 'renewlisting', 'renewal_id' => $r->id ), wpbdp_get_page_link( 'main' ) )
-                                                              )
+                                           '[link]' => sprintf( '<a href="%1$s">%1$s</a>', $renewal_url )
                                          );
 
             if ( $threshold == 0 ) {
@@ -838,23 +905,34 @@ class WPBDP_ListingsAPI {
                 $email = new WPBDP_Email();
                 $email->to[] = wpbusdirman_get_the_business_email( $listing->ID );
                 $email->subject = sprintf( '[%s] %s', get_option( 'blogname' ), wp_kses( $listing->post_title, array() ) );
-                $email->message = str_replace( array_keys( $message_replacements ),
+                $email->body = str_replace( array_keys( $message_replacements ),
                                                $message_replacements,
                                                nl2br( wpbdp_get_option( 'listing-renewal-message' ) ) );
                 $email->send();
 
                 $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 2 ), array( 'id' => $r->id ) );
-            } else {
+            } elseif ( $threshold > 0 ) {
                 // notify about coming expirations
                 $email = new WPBDP_Email();
                 $email->to[] = wpbusdirman_get_the_business_email( $listing->ID );
                 $email->subject = sprintf( '[%s] %s', get_option( 'blogname' ), wp_kses( $listing->post_title, array() ) );
-                $email->message = str_replace( array_keys( $message_replacements ),
+                $email->body = str_replace( array_keys( $message_replacements ),
                                                $message_replacements,
                                                nl2br( wpbdp_get_option( 'renewal-pending-message' ) ) );
                 $email->send();
                 
                 $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 1 ), array( 'id' => $r->id ) );
+            } elseif ( $threshold < 0 ) {
+                // remind about expired listings
+                $email = new WPBDP_Email();
+                $email->to[] = wpbusdirman_get_the_business_email( $listing->ID );
+                $email->subject = sprintf( '[%s] %s', get_option( 'blogname' ), wp_kses( $listing->post_title, array() ) );
+                $email->body = str_replace( array_keys( $message_replacements ),
+                                               $message_replacements,
+                                               nl2br( wpbdp_get_option( 'renewal-reminder-message' ) ) );
+                $email->send();
+                
+                $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 3 ), array( 'id' => $r->id ) );                
             }
         }
 
@@ -890,12 +968,16 @@ function wpbdp_save_listing( $data, &$result=null ) {
         $title = trim( strip_tags( $data->fields[ $title_field->get_id() ] ) );
     }
 
-    $listing_id = wp_insert_post( array( 
+    $post_data = array(
         'post_title' => $title,
         'post_status' => $data->listing_id ? wpbdp_get_option( 'edit-post-status' ) : 'pending',
-        'post_type' => WPBDP_POST_TYPE,
-        'ID' => $data->listing_id ? intval( $data->listing_id ) : null
-    ) );
+        'post_type' => WPBDP_POST_TYPE        
+    );
+
+    if ( $data->listing_id )
+        $post_data['ID'] = intval( $data->listing_id );
+
+    $listing_id = $data->listing_id ? wp_update_post( $post_data ) : wp_insert_post( $post_data );
 
     // create author user if needed
     if ( !$data->listing_id ) {
@@ -998,11 +1080,11 @@ function wpbdp_save_listing( $data, &$result=null ) {
     $result->listing_id = $listing_id;
 
     if ( !$editing )
-        do_action( 'wpbdp_create_listing', $listing_id, $data->fields );
+        do_action( 'wpbdp_create_listing', $listing_id, $data->fields, $data );
     else
-        do_action( 'wpbdp_edit_listing', $listing_id, $data->fields );
+        do_action( 'wpbdp_edit_listing', $listing_id, $data->fields, $data );
 
-    do_action( 'wpbdp_save_listing', $listing_id, $data->fields );
+    do_action( 'wpbdp_save_listing', $listing_id, $data->fields, $data );
 
     return $listing_id;
 }
