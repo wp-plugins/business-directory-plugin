@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 3.2.1
+Version: 3.2.2
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -28,15 +28,15 @@ License: GPLv2 or any later version
     reCAPTCHA used with permission of Mike Crawford & Ben Maurer, http://recaptcha.net
 */
 
-define( 'WPBDP_VERSION', '3.2.1' );
+define( 'WPBDP_VERSION', '3.2.2' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
 define( 'WPBDP_TEMPLATES_PATH', WPBDP_PATH . 'templates' );
 
 define( 'WPBDP_POST_TYPE', 'wpbdp_listing' );
-define( 'WPBDP_CATEGORY_TAX', 'wpbdp_category' );
-define( 'WPBDP_TAGS_TAX', 'wpbdp_tag' );
+define( 'WPBDP_CATEGORY_TAX', 'wpbdm-category' );
+define( 'WPBDP_TAGS_TAX', 'wpbdm-tags' );
 
 require_once( WPBDP_PATH . 'api/api.php' );
 require_once( WPBDP_PATH . 'deprecated/deprecated.php' );
