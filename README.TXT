@@ -2,10 +2,10 @@
 Contributors: businessdirectoryplugin
 Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget, church directory, address book, address, member directory, members directory, city portal, city portal plugin, city guide plugin, city guide
-Requires at least: 3.4
-Tested up to: 3.7
-Last Updated: 2013-Oct-28
-Stable tag: tags/3.2
+Requires at least: 3.5
+Tested up to: 3.7.1
+Last Updated: 2013-Nov-8
+Stable tag: tags/3.2.1
 License: GPLv2 or later
 
 Business Directory Plugin allows you to build local directories, business provider listings, Yellow-Pages style business directories, Yelp-like review sections and more. 
@@ -33,6 +33,7 @@ Business Directory Plugin allows you to build local directories, business provid
 * Assign features to paid or sticky listing plans to give users incentive to upgrade (Featured levels module) (NEW!)
 * Allow users to upload PDFs (File Upload Module) (NEW!)
 * Display Category Icons/Allow Parent-Child Category Navigation (Enhanced Category Module) (NEW!)
+* Manage attachments on listings (supports PDF, Text files, images)
 
 For a complete and detailed list of features, please visit:  http://businessdirectoryplugin.com/features/
  
@@ -42,13 +43,13 @@ Please report any bugs you find via http://businessdirectoryplugin.com/support-f
 These are optional modules that you can use to enhance Business Directory Plugin's functionality and
 support future development:
 
+NEW! [File Upload Module](http://businessdirectoryplugin.com/premium-modules/file-upload-module?ref=wp)
+
 NEW! [Featured Levels Module](http://businessdirectoryplugin.com/premium-modules/featured-levels-module?ref=wp)
 
 NEW! [ZIP Code Search Module](http://businessdirectoryplugin.com/premium-modules/zip-search-module?ref=wp)
 
-NEW! [File Upload Module](http://businessdirectoryplugin.com/premium-modules/file-upload-module?ref=wp)
-
-NEW! [Regions Module](http://businessdirectoryplugin.com/premium-modules/regions-module?ref=wp)
+[Regions Module](http://businessdirectoryplugin.com/premium-modules/regions-module?ref=wp)
 
 [Ratings Module](http://businessdirectoryplugin.com/premium-modules/ratings-module?ref=wp)
 
@@ -98,6 +99,9 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+
+= Version 3.2.1 =
+* Migrate Google Checkout to Google Wallet, updated gateways, workflow, API
 
 = Version 3.2 =
 * Add option to track BD setups for testing purposes. 
