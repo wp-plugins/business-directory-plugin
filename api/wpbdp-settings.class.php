@@ -38,7 +38,7 @@ class WPBDP_Settings {
                                  'recaptcha',
                                  _x( 'reCAPTCHA Settings', 'admin settings', 'WPBDM' ),
                                  str_replace( '<a>',
-                                              '<a href=\'http://www.recaptcha.com\' target=\'_blank\'>',
+                                              '<a href="http://www.recaptcha.com" target="_blank">',
                                               _x( 'Need API keys for reCAPTCHA? Get them <a>here</a>.', 'admin settings', 'WPBDM' ) )
                                 );
         $this->add_setting($s, 'recaptcha-on', _x('Use reCAPTCHA for contact forms', 'admin settings', 'WPBDM'), 'boolean', false);
@@ -84,6 +84,9 @@ class WPBDP_Settings {
         $g = $this->add_group('listings', _x('Listings', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'general', _x('General Settings', 'admin settings', 'WPBDM'));
         
+        $this->add_setting($s, 'listings-per-page', _x('Listings per page', 'admin settings', 'WPBDM'), 'text', '10',
+                           _x('Number of listings to show per page. Use a value of "0" to show all listings.', 'admin settings', 'WPBDM'));
+
         $this->add_setting($s, 'listing-duration', _x('Listing duration for no-fee sites (in days)', 'admin settings', 'WPBDM'), 'text', '365',
                            _x('Use a value of "0" to keep a listing alive indefinitely or enter a number less than 10 years (3650 days).', 'admin settings', 'WPBDM'),
                            null,
@@ -173,7 +176,7 @@ class WPBDP_Settings {
                             'renewal-reminder-message',
                             _x( 'Renewal reminder e-mail message', 'admin settings', 'WPBDM' ),
                             'text',
-                            "Dear Costumer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link].",
+                            "Dear Customer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link].",
                             _x( 'You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date, [site] for this site\'s URL and [link] for the actual renewal link.', 'admin settings', 'WPBDM' ),
                             array( 'use_textarea' => true )
                           );
@@ -201,7 +204,8 @@ class WPBDP_Settings {
                             array( 'author', _x( 'Author', 'admin settings', 'WPBDM' ) ),
                             array( 'date', _x( 'Date posted', 'admin settings', 'WPBDM' ) ),
                             array( 'modified', _x( 'Date last modified', 'admin settings', 'WPBDM' ) ),
-                            array( 'rand', _x( 'Random', 'admin settings', 'WPBDM' ) )
+                            array( 'rand', _x( 'Random', 'admin settings', 'WPBDM' ) ),
+                            array( 'paid', _x( 'Paid first then free', 'admin settings', 'WPBDM' ) )
                           )));
         $this->add_setting( $s, 'listings-sort', _x('Sort directory listings by', 'admin settings', 'WPBDM'), 'choice', 'ASC',
                            _x('Ascending for ascending order A-Z, Descending for descending order Z-A', 'admin settings', 'WPBDM'),
@@ -317,7 +321,7 @@ class WPBDP_Settings {
         $group = new StdClass();
         $group->wpslug = self::PREFIX . $slug;
         $group->slug = $slug;
-        $group->name = $name;
+        $group->name = esc_attr( $name );
         $group->help_text = $help_text;
         $group->sections = array();
 
@@ -328,7 +332,7 @@ class WPBDP_Settings {
 
     public function add_section($group_slug, $slug, $name, $help_text='') {
         $section = new StdClass();
-        $section->name = $name;
+        $section->name = esc_attr( $name );
         $section->slug = $slug;
         $section->help_text = $help_text;
         $section->settings = array();
@@ -383,7 +387,7 @@ class WPBDP_Settings {
             }
 
             $setting = new StdClass();
-            $setting->name = $name;
+            $setting->name = esc_attr( $name );
             $setting->label = $label;
             $setting->help_text = $help_text;
             $setting->default = $_default;
@@ -492,7 +496,7 @@ class WPBDP_Settings {
         $value = $this->get($setting->name);
 
         if (isset($args['use_textarea']) || strlen($value) > 100) {
-            $html  = '<textarea id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" cols="50" rows="2">';
+            $html  = '<textarea id="' . $setting->name . '" name="' . self::PREFIX . $setting->name . '" cols="80" rows="4">';
             $html .= esc_textarea($value);
             $html .= '</textarea><br />';
         } else {
@@ -562,7 +566,7 @@ class WPBDP_Settings {
                 $callback = create_function('', ';');
 
                 if ($section->help_text)
-                    $callback = create_function('', 'echo "<p class=\"description\">' . $section->help_text . '</p>";');
+                    $callback = create_function('', 'echo "<p class=\"description\">' . addslashes( $section->help_text ) . '</p>";');
 
                 add_settings_section($section->slug, $section->name, $callback, $group->wpslug);
 

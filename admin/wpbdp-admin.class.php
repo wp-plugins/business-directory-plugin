@@ -27,11 +27,13 @@ class WPBDP_Admin {
 
         add_filter('wp_dropdown_users', array($this, '_dropdown_users'));
 
-        add_filter(sprintf('manage_edit-%s_columns', WPBDP_POST_TYPE),
-                   array($this, 'add_custom_columns'));
+        add_filter(sprintf('manage_edit-%s_columns', WPBDP_POST_TYPE), array( $this, 'add_custom_columns'));
         add_filter('post_row_actions', array($this, '_row_actions'), 10, 2);
-        add_filter('manage_edit-' . WPBDP_CATEGORY_TAX . '_columns', array($this, '_custom_taxonomy_columns'));
-        add_filter('manage_edit-' . WPBDP_TAGS_TAX . '_columns', array($this, '_custom_taxonomy_columns'));
+        
+        add_filter( 'manage_edit-' . WPBDP_CATEGORY_TAX . '_columns', array( &$this, 'add_custom_taxonomy_columns' ) );
+        add_filter( 'manage_edit-' . WPBDP_TAGS_TAX . '_columns', array( &$this, 'tag_taxonomy_columns' ) );
+        add_action( 'manage_' . WPBDP_CATEGORY_TAX . '_custom_column', array( &$this, 'custom_taxonomy_columns' ), 10, 3 );
+
         add_action(sprintf('manage_posts_custom_column'), array($this, 'custom_columns'));
         add_filter('views_edit-' . WPBDP_POST_TYPE, array($this, 'add_custom_views'));
         add_filter('request', array($this, 'apply_query_filters'));
@@ -50,14 +52,24 @@ class WPBDP_Admin {
 
         add_action('admin_footer', array($this, '_add_bulk_actions'));
         add_action('admin_footer', array($this, '_fix_new_links'));
+        
+        // CSV export page.
+        $this->csv_export = new WPBDP_Admin_CSVExport();
     }
 
     function enqueue_scripts() {
+        global $pagenow;
+
         wp_enqueue_style('wpbdp-admin', WPBDP_URL . 'admin/resources/admin.css');
         wp_enqueue_style('thickbox');
 
         wp_enqueue_script('wpbdp-frontend-js', WPBDP_URL . 'resources/js/wpbdp.js', array('jquery'));
         wp_enqueue_script('wpbdp-admin-js', WPBDP_URL . 'admin/resources/admin.js', array('jquery', 'thickbox'));
+
+        if ( 'post.php' == $pagenow ) {
+            wp_enqueue_style( 'wpbdp-jquery-ui-css', 'http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.21/themes/redmond/jquery-ui.css' );
+            wp_enqueue_script( 'jquery-ui-datepicker' );
+        }
 
         // Ask for site tracking if needed.
         if ( !wpbdp_get_option( 'tracking-on', false ) && !get_option( 'wpbdp-tracking-dismissed', false ) && current_user_can( 'administrator' ) ) {
@@ -126,7 +138,6 @@ class WPBDP_Admin {
                               array( 'WPBDP_TransactionsAdmin', 'admin_menu_cb' )
                             );
         }
-
         add_submenu_page('wpbdp_admin',
                          _x('CSV Import', 'admin menu', 'WPBDM'),
                          _x('CSV Import', 'admin menu', 'WPBDM'),
@@ -138,7 +149,7 @@ class WPBDP_Admin {
                           _x( 'CSV Export', 'admin menu', 'WPBDM' ),
                           'activate_plugins',
                           'wpbdp-csv-export',
-                          array( 'WPBDP_Admin_CSVExport', 'menu_callback' ) );
+                          array( &$this->csv_export, 'dispatch' ) );
         add_submenu_page( 'wpbdp_admin',
                           _x( 'Debug', 'admin menu', 'WPBDM' ),
                           _x( 'Debug', 'admin menu', 'WPBDM' ),
@@ -379,12 +390,23 @@ class WPBDP_Admin {
         // Payment status
         $payment_status = $listings_api->get_payment_status($post->ID);
 
+        // Determine selected tab.
+        $selected_tab = 'generalinfo';
+        if ( isset( $_GET['wpbdmaction'] ) && in_array( $_GET['wpbdmaction'], array( 'removecategory', 'assignfee', 'change_expiration' ), true ) )
+            $selected_tab = 'fees';
+
+        // Some general info.
+        $expired_categories_ids = $listings_api->get_expired_categories( $post->ID );
+        $current_categories = wp_get_post_terms( $post->ID, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
+        $post_categories = array_unique( array_merge( $current_categories, $expired_categories_ids ) );
+        $categories = get_terms( WPBDP_CATEGORY_TAX, array( 'hide_empty' => false, 'hierarchical' => false, 'include' => $post_categories ? $post_categories : array( -1 ) ) );        
+
         echo '<div class="misc-pub-section">';
 
         echo '<ul class="listing-metabox-tabs">';
-        echo '<li class="tabs selected"><a href="#listing-metabox-generalinfo">' . _x('General Info', 'admin', 'WPBDM') . '</a></li>';
-        echo '<li class="tabs"><a href="#listing-metabox-fees">' . _x('Fee Details', 'admin', 'WPBDM') . '</a></li>';
-        echo '<li class="tabs"><a href="#listing-metabox-transactions">' . _x('Transactions', 'admin', 'WPBDM') . '</a></li>';
+        echo '<li class="tabs ' . ( $selected_tab == 'generalinfo' ? 'selected' : '' ) . '"><a href="#listing-metabox-generalinfo">' . _x('General', 'admin', 'WPBDM') . '</a></li>';
+        echo '<li class="tabs ' . ( $selected_tab == 'fees' ? 'selected' : '' ) . '"><a href="#listing-metabox-fees">' . _x('Fee Details', 'admin', 'WPBDM') . '</a></li>';
+        echo '<li class="tabs ' . ( $selected_tab == 'transactions' ? 'selected' : '' ) . '"><a href="#listing-metabox-transactions">' . _x('Transactions', 'admin', 'WPBDM') . '</a></li>';
         echo '</ul>';
 
         echo '<div id="listing-metabox-generalinfo">';
@@ -437,27 +459,30 @@ class WPBDP_Admin {
                 echo sprintf('<a href="%s" class="button">%s</a>',
                              add_query_arg('wpbdmaction', 'setasnotpaid'),
                              _x('Mark listing as Not paid', 'admin infometabox', 'WPBDM'));
+
+            echo wpbdp_render_page( WPBDP_PATH . 'admin/templates/infometabox-general-feesummary.tpl.php', array(
+                'post_categories' => $categories,
+                'expired_categories' => $expired_categories_ids,
+                'post_id' => $post->ID,                           
+            ) );
+
         }
+
         echo '</div>';
+
+        // Fees
+        echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/infometabox-fees.tpl.php', array(
+                                'post_categories' => $categories,
+                                'expired_categories' => $expired_categories_ids,
+                                'post_id' => $post->ID,
+                                'image_count' => count($listings_api->get_images($post->ID))
+                                ));
 
         // Transactions
         echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/infometabox-transactions.tpl.php', array(
                                 'transactions' => wpbdp_payments_api()->get_transactions($post->ID)
                                ));
 
-        // Fees
-        $expired_categories_ids = $listings_api->get_expired_categories( $post->ID );
-        $current_categories = wp_get_post_terms( $post->ID, WPBDP_CATEGORY_TAX, array( 'fields' => 'ids' ) );
-        $post_categories = array_unique( array_merge( $current_categories, $expired_categories_ids ) );
-
-        ;
-
-        echo wpbdp_render_page(WPBDP_PATH . 'admin/templates/infometabox-fees.tpl.php', array(
-                                'post_categories' => get_terms( WPBDP_CATEGORY_TAX, array( 'hide_empty' => false, 'hierarchical' => false, 'include' => $post_categories ? $post_categories : array( 0 ) ) ),
-                                'expired_categories' => $expired_categories_ids,
-                                'post_id' => $post->ID,
-                                'image_count' => count($listings_api->get_images($post->ID))
-                                ));
         echo '</div>';
 
         echo '<div class="clear"></div>';
@@ -662,6 +687,19 @@ class WPBDP_Admin {
                 $this->messages[] = _x('The transaction has been rejected.', 'admin', 'WPBDM');
                 break;
 
+            case 'change_expiration':
+                global $wpdb;
+
+                $expiration_time = isset( $_GET['expiration_date'] ) ? date( 'Y-m-d 00:00:00', strtotime( trim( $_GET['expiration_date'] ) ) ) : null;
+
+                if ( $expiration_time ) {
+                    $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}wpbdp_listing_fees SET expires_on = %s, email_sent = %d WHERE id = %d", $expiration_time, 0, intval( $_GET['listing_fee_id'] ) ) );
+                }
+                
+                $this->messages[] = _x( 'The expiration date has been changed.', 'admin', 'WPBDM' );
+
+                break;
+
             case 'assignfee':
                 if ($listings_api->assign_fee($posts[0], $_GET['category_id'], $_GET['fee_id']))
                     $this->messages[] = _x('The fee was successfully assigned.', 'admin', 'WPBDM');
@@ -774,9 +812,25 @@ class WPBDP_Admin {
 
     }
 
-    public function _custom_taxonomy_columns($cols) {
-        $cols['posts'] = _x('Listing Count', 'admin', 'WPBDM');
-        return $cols;
+    public function add_custom_taxonomy_columns( $cols ) {
+        $newcols = array_merge( array_slice( $cols, 0, 1 ),
+                                array( 'id' => _x( 'ID', 'admin category id', 'WPBDM' ) ),
+                                array_slice( $cols, 1, -1),
+                                array( 'posts' => _x('Listing Count', 'admin', 'WPBDM') ) );
+        return $newcols;
+    }
+
+    public function tag_taxonomy_columns( $cols ) {
+        $newcols = array_merge( array_slice( $cols, 0, -1 ),
+                                array( 'posts' => _x('Listing Count', 'admin', 'WPBDM') ) );
+        return $newcols;        
+    }
+    
+    public function custom_taxonomy_columns( $value, $column_name, $id ) {
+        if ( $column_name == 'id' )
+            return $id;
+        
+        return $value;
     }
 
     function add_custom_columns($columns_) {
@@ -927,6 +981,8 @@ class WPBDP_Admin {
             $_REQUEST['groupid'] = 'general';
             unset($_REQUEST['resetdefaults']);
         }
+        
+        $_SERVER['REQUEST_URI'] = remove_query_arg( 'deletedb', $_SERVER['REQUEST_URI'] );        
 
         wpbdp_render_page(WPBDP_PATH . 'admin/templates/settings.tpl.php',
                           array('wpbdp_settings' => $wpbdp->settings),
@@ -990,12 +1046,12 @@ class WPBDP_Admin {
 
                 break;
 
-            case 'wpbdp-csv-export':
-                if ( isset( $_POST['action'] ) && $_POST['action'] == 'do-export' ) {
-                    WPBDP_Admin_CSVExport::download();
-                }
-
-                break;
+            // case 'wpbdp-csv-export':
+            //     if ( isset( $_POST['action'] ) && $_POST['action'] == 'do-export' ) {
+            //         WPBDP_Admin_CSVExport::download();
+            //     }
+            // 
+            //     break;
 
             default:
                 break;
@@ -1163,6 +1219,11 @@ class WPBDP_Admin {
 
     }
 
+}
+
+function wpbdp_admin_message( $msg, $kind = '' ) {
+    global $wpbdp;
+    $wpbdp->admin->messages[] = $kind ? array( $msg, $kind ) : $msg;
 }
 
 }

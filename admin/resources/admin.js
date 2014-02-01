@@ -120,6 +120,7 @@ jQuery(document).ready(function($){
         // show new tab
         $(this).parent('li').addClass('selected');
         $(href).show();
+        $('.listing-fee-expiration-datepicker').hide();
     });
 
     $('#BusinessDirectory_listinginfo .listing-metabox-tabs li.selected a').click();
@@ -145,6 +146,33 @@ jQuery(document).ready(function($){
         e.preventDefault();
         $(this).parent('.assignfee').hide();
     });
+
+    if ( $('#listing-metabox-fees' ).length > 0 ) {
+        $('#listing-metabox-generalinfo, #listing-metabox-fees').each(function(i, v) {
+            var $tab = $(v);
+            $tab.find('.listing-fee-expiration-datepicker').each(function(i, v) {
+                var $dp = $(v);
+                var $changeLink = $dp.siblings('a.listing-fee-expiration-change-link');
+
+                $dp.hide().datepicker({
+                    dateFormat: 'yy-mm-dd',
+                    defaultDate: $changeLink.attr('data-date'),
+                    onSelect: function(newDate) {
+                        location.href = $changeLink.attr('href') + '&expiration_date=' + newDate;
+                    }
+                });
+            });
+
+            $tab.find('a.listing-fee-expiration-change-link').click(function(e) {
+                e.preventDefault();
+
+                var renewal_id = $(this).attr('data-renewalid');
+                $('.listing-fee-expiration-datepicker').not('.renewal-' + renewal_id ).hide();
+                $('.listing-fee-expiration-datepicker.renewal-' + renewal_id).toggle();
+            });
+        });
+
+    }
 
 
     /* Ajax placeholders */
@@ -252,3 +280,21 @@ function wpbdp_load_placeholder($v) {
 
     $v.load(ajaxurl, {"action": action, "post_id": post_id, "baseurl": baseurl});
 }
+
+var WPBDP_Admin = {};
+
+// TODO: integrate this into $.
+WPBDP_Admin.ProgressBar = function($item, settings) {
+    $item.empty();
+    $item.html('<div class="wpbdp-progress-bar"><span class="progress-text">0%</span><div class="progress-bar"><div class="progress-bar-outer"><div class="progress-bar-inner" style="width: 0%;"></div></div></div>');
+    
+    this.$item = $item;
+    this.$text = $item.find('.progress-text');
+    this.$bar = $item.find('.progress-bar');
+    
+    this.set = function( completed, total ) {
+        var pcg = Math.round( 100 * parseInt( completed) / parseInt( total ) );
+        this.$text.text(pcg + '%');
+        this.$bar.find('.progress-bar-inner').attr('style', 'width: ' + pcg + '%;');
+    };
+};

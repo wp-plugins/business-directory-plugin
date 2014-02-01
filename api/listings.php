@@ -83,7 +83,13 @@ class WPBDP_ListingUpgrades {
 
             $this->_levels[$upgrade_id] = $obj;
         } else {
-            // TODO: support updates too
+            // XXX We only allow changes to name, cost and description of currently registered levels.
+            foreach ( array( 'name', 'cost', 'description' ) as $k ) {
+                if ( isset( $data[ $k ] ) )
+                    $this->_levels[ $upgrade_id ]->{$k} = $data[ $k ];
+             }
+             
+             return;
         }
 
         if ($obj->downgrade) {
@@ -704,7 +710,7 @@ class WPBDP_ListingsAPI {
                                 $terms = array_merge( $terms, get_term_children( $tid, WPBDP_CATEGORY_TAX ) );
                             }
 
-                             if ($terms) {
+                            if ($terms) {
                                 $query .= " LEFT JOIN {$wpdb->term_relationships} AS trel1 ON ({$wpdb->posts}.ID = trel1.object_id) LEFT JOIN {$wpdb->term_taxonomy} AS ttax1 ON (trel1.term_taxonomy_id = ttax1.term_taxonomy_id)";
                                 $where .= " AND ttax1.term_id IN (" . implode( ',', $terms ) . ") ";
                             }
@@ -745,8 +751,12 @@ class WPBDP_ListingsAPI {
                             break;
                         case 'meta':
                             if (in_array($field->get_field_type()->get_id(), array('checkbox', 'multiselect', 'select'))) { // multivalued field
-                                $options = array_diff( is_array( $q ) ? $q : array( $q ), array( '' ) );
+                                $options = array_diff( is_array( $q ) ? $q : array( $q ), array( '-1' ) );
                                 $options = array_map( 'preg_quote', $options );
+                                
+                                if (!$options)
+                                    continue;
+
                                 $pattern = '(' . implode('|', $options) . '){1}([tab]{0,1})';
 
                                 $query .= " INNER JOIN {$wpdb->postmeta} AS mt{$i}mv ON ({$wpdb->posts}.ID = mt{$i}mv.post_id)";
@@ -770,9 +780,6 @@ class WPBDP_ListingsAPI {
         }
 
         $query .= ' WHERE ' . apply_filters('wpbdp_search_where', $where, $args);
-
-        wpbdp_debug($query);
-        // wpbdp_debug_e( $query );
 
         return $wpdb->get_col($query);
     }

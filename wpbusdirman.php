@@ -5,7 +5,7 @@ if(preg_match('#' . basename(__FILE__) . '#', $_SERVER['PHP_SELF'])) { die('You 
 Plugin Name: Business Directory Plugin
 Plugin URI: http://www.businessdirectoryplugin.com
 Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
-Version: 3.2.3
+Version: 3.3
 Author: D. Rodenbaugh
 Author URI: http://businessdirectoryplugin.com
 License: GPLv2 or any later version
@@ -28,7 +28,7 @@ License: GPLv2 or any later version
     reCAPTCHA used with permission of Mike Crawford & Ben Maurer, http://recaptcha.net
 */
 
-define( 'WPBDP_VERSION', '3.2.3' );
+define( 'WPBDP_VERSION', '3.3' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -59,6 +59,9 @@ global $wpbdp;
 
 
 class WPBDP_Plugin {
+    
+    /* Access to standard APIs. */
+    public $formfields;
 
     public function __construct() {
         register_activation_hook(__FILE__, array($this, 'plugin_activation'));
@@ -72,7 +75,7 @@ class WPBDP_Plugin {
             // category page query
             $query->set('post_status', 'publish');
             $query->set('post_type', WPBDP_POST_TYPE);
-            $query->set('posts_per_page', 0);
+            $query->set('posts_per_page', wpbdp_get_option( 'listings-per-page' ) > 0 ? wpbdp_get_option( 'listings-per-page' ) : -1);
             $query->set('orderby', wpbdp_get_option('listings-order-by', 'date'));
             $query->set('order', wpbdp_get_option('listings-sort', 'ASC'));
         }
@@ -85,7 +88,13 @@ class WPBDP_Plugin {
             $is_sticky_query = $wpdb->prepare("(SELECT 1 FROM {$wpdb->postmeta} WHERE {$wpdb->postmeta}.post_id = {$wpdb->posts}.ID AND {$wpdb->postmeta}.meta_key = %s AND {$wpdb->postmeta}.meta_value = %s) AS wpbdp_is_sticky",
                                                '_wpbdp[sticky]', 'sticky');
 
-            $fields = $fields . ', ' . $is_sticky_query;
+            if ( 'paid' == wpbdp_get_option( 'listings-order-by' ) ) {
+                $is_paid_query = "(SELECT 1 FROM {$wpdb->prefix}wpbdp_payments pp WHERE pp.listing_id = {$wpdb->posts}.ID AND pp.amount > 0 ) AS wpbdp_is_paid";
+                $fields = $fields . ', ' . $is_sticky_query . ', ' . $is_paid_query;
+            } else {
+                $fields = $fields . ', ' . $is_sticky_query;
+            }
+
             $fields = apply_filters('wpbdp_query_fields', $fields);
         }
 
@@ -95,7 +104,13 @@ class WPBDP_Plugin {
     public function _posts_orderby($orderby, $query) {
         if (!is_admin() && isset($query->query_vars['post_type']) && $query->query_vars['post_type'] == WPBDP_POST_TYPE) {
             $wpbdp_orderby = apply_filters('wpbdp_query_orderby', '');
-            $orderby = 'wpbdp_is_sticky DESC' . $wpbdp_orderby . ', ' . $orderby;
+
+            if ( 'paid' == wpbdp_get_option( 'listings-order-by' ) ) {
+                $orderby = 'wpbdp_is_sticky DESC, wpbdp_is_paid DESC' . $wpbdp_orderby . ', ' . $orderby;
+            } else {
+                $orderby = 'wpbdp_is_sticky DESC' . $wpbdp_orderby . ', ' . $orderby;
+            }
+
         }
 
         return $orderby;
@@ -552,14 +567,32 @@ register_taxonomy(self::TAXONOMY, WPBDP_POST_TYPE, array(
     public function _listings_shortcode($atts) {
         if (!$this->controller->check_main_page($msg)) return $msg;
 
-        $atts = shortcode_atts(array('category' => null), $atts);
+        $atts = shortcode_atts( array(
+                                        'category' => null,
+                                        'operator' => 'OR'
+                                     ),
+                                $atts
+                              );
 
-        if ($atts['category']) {
-            return $this->controller->browse_category($atts['category']);
-        } else {
-            return $this->controller->view_listings(true);
+        if ( !$atts['category'] )
+            return $this->controller->view_listings( true );
+
+        $atts['category'] = explode( ',', $atts['category'] );
+        $categories = array();
+
+        foreach ( $atts['category'] as $cat ) {
+            $term = null;
+            if ( !is_numeric( $cat ) )
+                $term = get_term_by( 'slug', $cat, WPBDP_CATEGORY_TAX );
+
+            if ( !$term && is_numeric( $cat ) )
+                $term = get_term_by( 'id', $cat, WPBDP_CATEGORY_TAX );
+
+            if ( $term )
+                $categories[] = $term->term_id;
         }
 
+        return $this->controller->browse_category( $categories );
     }
 
     /* theme filters */
@@ -1003,7 +1036,11 @@ register_taxonomy(self::TAXONOMY, WPBDP_POST_TYPE, array(
         $html  = '';
         $html .= $comment_field;
 
-        if ( wpbdp_get_option( 'recaptcha-on' ) ) {
+        // If this is not a BD page, ignore reCAPTCHA.
+        if ( ! $this->controller->get_current_action() )
+            return $html;
+
+        if ( wpbdp_get_option( 'recaptcha-on' ) && wpbdp_get_option( 'show-contact-form' ) ) {
             // XXX: We can only have one reCAPTCHA per page, so workaround this limitation by sharing the one in the contact form.
             add_action( 'wp_footer', array( &$this, 'comment_recaptcha_workaround' ) );
 
@@ -1032,6 +1069,9 @@ register_taxonomy(self::TAXONOMY, WPBDP_POST_TYPE, array(
     }
     
     public function check_comment_recaptcha( $comment_data ) {
+        if ( !isset( $_POST['recaptcha_challenge_field'] ) )
+            return $comment_data;
+
         $private_key = wpbdp_get_option( 'recaptcha-private-key' );
 
         if ( !$private_key )

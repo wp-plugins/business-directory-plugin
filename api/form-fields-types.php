@@ -261,6 +261,11 @@ class WPBDP_FieldTypes_Select extends WPBDP_FormFieldType {
                               'inselect',
                               $field->is_required() ? 'required' : '');
 
+            if ( $field->data( 'empty_on_search' ) && $context == 'search' ) {
+                $html .= sprintf( '<option value="-1">%s</option>',
+                                  _x( '-- Choose One --', 'form-fields-api category-select', 'WPBDM' ) );
+            }
+
             foreach ( $options as $option => $label ) {
                 $html .= sprintf( '<option value="%s" %s>%s</option>',
                                   esc_attr( $option ),
@@ -282,7 +287,9 @@ class WPBDP_FieldTypes_Select extends WPBDP_FormFieldType {
         if ( $association != 'meta' && $association != 'tags' )
             return '';
 
-        $label = _x( 'Field Options (for select lists, radio buttons and checkboxes).', 'form-fields admin', 'WPBDM' ) . '<span class="description">(required)</span>';
+        $settings = array();
+
+        $settings['options'][] = _x( 'Field Options (for select lists, radio buttons and checkboxes).', 'form-fields admin', 'WPBDM' ) . '<span class="description">(required)</span>';
         
         $content  = '<span class="description">Comma (,) separated list of options</span><br />';
         $content .= '<textarea name="field[x_options]" cols="50" rows="2">';
@@ -291,7 +298,16 @@ class WPBDP_FieldTypes_Select extends WPBDP_FormFieldType {
             $content .= implode( ',', $field->data( 'options' ) );
         $content .= '</textarea>';
 
-        return self::render_admin_settings( array( array( $label, $content ) ) );
+        $settings['options'][] = $content;
+
+        $settings['empty_on_search'][] = _x('Allow empty selection on search?', 'form-fields admin', 'WPBDM');
+
+        $content  = '<span class="description">Empty search selection means users can make this field optional in searching. Turn it off if the field must always be searched on.</span><br />';
+        $content .= '<input type="checkbox" value="1" name="field[x_empty_on_search]" ' . ( !$field ? ' checked="checked"' : ($field->data( 'empty_on_search' ) ? ' checked="checked"' : '') ) . ' />';
+        
+        $settings['empty_on_search'][] = $content;
+     
+        return self::render_admin_settings( $settings );
     }
 
     public function process_field_settings( &$field ) {
@@ -304,6 +320,11 @@ class WPBDP_FieldTypes_Select extends WPBDP_FormFieldType {
             return new WP_Error( 'wpbdp-invalid-settings', _x( 'Field list of options is required.', 'form-fields admin', 'WPBDM' ) );
 
         $field->set_data( 'options', !empty( $options ) ? explode( ',', $options ) : array() );
+
+        if ( array_key_exists( 'x_empty_on_search', $_POST['field'] ) ) {
+            $empty_on_search = (bool) intval( $_POST['field']['x_empty_on_search'] );
+            $field->set_data( 'empty_on_search', $empty_on_search );
+        }
     }
 
     public function store_field_value( &$field, $post_id, $value ) {
