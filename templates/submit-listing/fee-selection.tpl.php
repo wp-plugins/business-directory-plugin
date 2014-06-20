@@ -1,15 +1,16 @@
-<h3>
-	<?php _ex( '2 - Fee/Upgrade Selection', 'templates', 'WPBDM' ); ?>
-</h3>
+<h3><?php echo $_state->step_number . ' - '; ?><?php _ex( 'Fee/Upgrade Selection', 'templates', 'WPBDM' ); ?></h3>
 
 <form id="wpbdp-listing-form-fees" class="wpbdp-listing-form" method="POST" action="">
-	<input type="hidden" name="_state" value="<?php echo $_state; ?>" />
+	<input type="hidden" name="_state" value="<?php echo $_state->id; ?>" />
 
-	<?php foreach ( $categories as $cat_id ): $category = get_term( $cat_id, WPBDP_CATEGORY_TAX ); ?>
+	<?php
+    foreach ( $fee_selection as &$f ):
+    ?>
 		<?php echo wpbdp_render( 'parts/category-fee-selection',
-								 array( 'category' => $category,
-								 		'fees' => $fees[ $cat_id ],
-								 		'state' => $state ) ); ?>
+								 array( 'category' => $f['term'],
+                                        'multiple_categories' => count( $fee_selection ) > 1,
+                                        'current_fee' => $f['fee_id'],
+								 		'category_fees' => $f[ 'options' ] ) ); ?>
 	<?php endforeach; ?>
 
 <?php if ( $upgrade_option ): ?>
@@ -20,6 +21,17 @@
 		<label><input type="checkbox" name="upgrade-listing" value="upgrade" <?php echo wpbdp_getv( $_POST, 'upgrade-listing', '') == 'upgrade' ? 'checked="checked"' : ''; ?> /> <?php _ex( 'Yes, upgrade my listing now.', 'templates', 'WPBDM'); ?></label>
 	</p>
 </div>
+<?php endif; ?>
+
+<?php if ( $allow_recurring ): ?>
+<?php if ( wpbdp_get_option( 'listing-renewal-auto-dontask' ) ): ?>
+<input type="hidden" name="autorenew_fees" value="autorenew" />
+<?php else: ?>
+<div class="make-charges-recurring-option">
+    <b><?php echo _x( 'Would you like to make your fee renew automatically at the end of the period?', 'submit', 'WPBDM' ); ?></b>
+    <input type="checkbox" name="autorenew_fees" value="autorenew" <?php echo wpbdp_getv( $_POST, 'autorenew_fees' ) == 'autorenew' ? 'checked="checked"' : ''; ?> />
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 	<input type="submit" value="<?php _ex( 'Continue', 'templates', 'WPBDM' ); ?> " />

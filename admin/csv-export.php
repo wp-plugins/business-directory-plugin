@@ -1,6 +1,4 @@
 <?php
-require_once( ABSPATH . 'wp-admin/includes/class-pclzip.php' );
-
 /**
  * CSV Export admin pages.
  * @since 3.2
@@ -25,29 +23,35 @@ class WPBDP_Admin_CSVExport {
     }
     
     public function ajax_csv_export() {
-        if ( !isset( $_REQUEST['state'] ) ) {
-            $export = new WPBDP_CSVExporter( array_merge( $_REQUEST['settings'], array() ) );
-        } else {
-            $export = WPBDP_CSVExporter::from_state( unserialize( base64_decode( $_REQUEST['state'] ) ) );
-            
-            if ( isset( $_REQUEST['cleanup'] ) && $_REQUEST['cleanup'] == 1 ) {
-                $export->cleanup();
+        $error = '';
+
+        try {
+            if ( !isset( $_REQUEST['state'] ) ) {
+                $export = new WPBDP_CSVExporter( array_merge( $_REQUEST['settings'], array() ) );
             } else {
-                $export->advance();
-            }  
+                $export = WPBDP_CSVExporter::from_state( unserialize( base64_decode( $_REQUEST['state'] ) ) );
+                
+                if ( isset( $_REQUEST['cleanup'] ) && $_REQUEST['cleanup'] == 1 ) {
+                    $export->cleanup();
+                } else {
+                    $export->advance();
+                }  
+            }
+        } catch (Exception $e) {
+            $error = $e->getMessage();
         }
         
-        $state = $export->get_state();
+        $state = ! $error ? $export->get_state() : null;
         
         $response = array();
-        $response['error'] = '';
-        $response['state'] = base64_encode( serialize( $state ) );
-        $response['count'] = count( $state['listings'] );
-        $response['exported'] = $state['exported'];
-        $response['filesize'] = size_format( $state['filesize'] );
-        $response['isDone'] = $state['done'];
-        $response['fileurl'] = $state['done'] ? $export->get_file_url() : '';        
-        $response['filename'] = $state['done'] ? basename( $export->get_file_url() ) : '';
+        $response['error'] = $error;
+        $response['state'] = $state ? base64_encode( serialize( $state ) ) : null;
+        $response['count'] = $state ? count( $state['listings'] ) : 0;
+        $response['exported'] = $state ? $state['exported'] : 0;
+        $response['filesize'] = $state ? size_format( $state['filesize'] ) : 0;
+        $response['isDone'] = $state ? $state['done'] : false;
+        $response['fileurl'] = $state ? ( $state['done'] ? $export->get_file_url() : '' ) : '';
+        $response['filename'] = $state ? ( $state['done'] ? basename( $export->get_file_url() ) : '' ) : '';
         
         echo json_encode( $response );
         
@@ -121,7 +125,7 @@ class WPBDP_CSVExporter {
                 if ( is_dir( $csvexportsdir ) || mkdir( $csvexportsdir ) ) {
                     $this->workingdir = rtrim( $csvexportsdir . DIRECTORY_SEPARATOR . uniqid(), DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
 
-                    if ( !mkdir( $this->workingdir ) )
+                    if ( !mkdir( $this->workingdir, 0777 ) )
                         $direrror = _x( 'Could not create a temporary directory for handling this CSV export.', 'admin csv-export', 'WPBDM' );
                 } else {
                     $direrror = _x( 'Could not create wpbdp-csv-exports directory.', 'admin csv-export', 'WPBDM' );
@@ -159,18 +163,24 @@ class WPBDP_CSVExporter {
         }
     }
     
-    public function &from_state( $state ) {
+    public static function &from_state( $state ) {
         $export = new self( $state['settings'], trailingslashit( $state['workingdir'] ), (array) $state['listings'] );
         $export->exported = abs( intval( $state['exported'] ) );
-        
+
         // Setup columns.
         $shortnames = wpbdp_formfields_api()->get_short_names();
         foreach ( $state['columns'] as $fshortname ) {
-            $field_id = array_search( $fshortname );
+            if ( in_array( $fshortname, array( 'images', 'username', 'featured_level', 'expires_on' ) ) ) {
+                $export->columns[ $fshortname ] = $fshortname;
+                continue;
+            }
+
+            $field_id = array_search( $fshortname, $shortnames );
+
             if ( $field_id === FALSE )
                 throw new Exception( 'Invalid field shortname.' );
 
-            $this->columns[ $fshortname ] = wpbdp_get_form_field( $field_id );
+            $export->columns[ $fshortname ] = wpbdp_get_form_field( $field_id );
         }
         
         return $export;
@@ -183,7 +193,7 @@ class WPBDP_CSVExporter {
             'workingdir' => $this->workingdir,
             'listings' => $this->listings,
             'exported' => $this->exported,
-            'filesize' => filesize( $this->workingdir . ( file_exists( $this->workingdir . 'export.zip' ) ? 'export.zip' : 'export.csv' ) ),
+            'filesize' => file_exists( $this->get_file_path() ) ?  filesize( $this->get_file_path() ) : 0,
             'done' => $this->is_done()
         );
     }
@@ -205,6 +215,9 @@ class WPBDP_CSVExporter {
     public function advance() {
         if ( $this->is_done() )
             return;
+
+        define( 'PCLZIP_TEMPORARY_DIR', $this->workingdir );
+        require_once( ABSPATH . 'wp-admin/includes/class-pclzip.php' );
         
         $csvfile = fopen( $this->workingdir . 'export.csv', 'a' );
         
@@ -243,6 +256,13 @@ class WPBDP_CSVExporter {
     
     public function is_done() {
         return $this->exported == count( $this->listings );
+    }
+
+    public function get_file_path() {
+        if ( file_exists( $this->workingdir . 'export.zip' ) )
+            return $this->workingdir . 'export.zip';
+        else
+            return $this->workingdir . 'export.csv';
     }
     
     public function get_file_url() {
@@ -305,11 +325,10 @@ class WPBDP_CSVExporter {
     
                             if ( !is_readable( $img_path ) )
                                 continue;
-                            
+
                             $this->images_archive = !isset( $this->images_archive ) ? new PclZip( $this->workingdir . 'images.zip' ) : $this->images_archive;
-                            $this->images_archive->add( $img_path, PCLZIP_OPT_REMOVE_ALL_PATH );
-                            
-                            $listing_images[] = basename( $img_path );
+                            if ( $res = $this->images_archive->add( $img_path, PCLZIP_OPT_REMOVE_ALL_PATH ) )
+                                $listing_images[] = basename( $img_path );
                         }
                     }
     

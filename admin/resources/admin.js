@@ -1,5 +1,6 @@
 var WPBDP_associations_fieldtypes = {};
 
+
 (function($) {
 
     /* Form Fields */
@@ -13,6 +14,23 @@ var WPBDP_associations_fieldtypes = {};
 
             WPBDPAdmin_FormFields.$f_fieldtype = $('form#wpbdp-formfield-form select#field-type');
             WPBDPAdmin_FormFields.$f_fieldtype.change( WPBDPAdmin_FormFields.onFieldTypeChange );
+
+            $('table.formfields tbody').sortable({
+                placeholder: 'wpbdp-draggable-highlight',
+                handle: '.wpbdp-drag-handle',
+                axis: 'y',
+                cursor: 'move',
+                opacity: 0.9,
+                update: function( event, ui ) {
+                    var sorted_items = [];
+                    $( this ).find( '.wpbdp-drag-handle' ).each( function( i, v ) {
+                        sorted_items.push( $( v ).attr('data-field-id') );
+                    } );
+
+                    if ( sorted_items )
+                        $.post( ajaxurl, { 'action': 'wpbdp-formfields-reorder', 'order': sorted_items } );
+                }
+            });
         },
 
         onFieldTypeChange: function() {
@@ -126,15 +144,6 @@ jQuery(document).ready(function($){
     $('#BusinessDirectory_listinginfo .listing-metabox-tabs li.selected a').click();
 
 
-    /* Listing Info metabox / Transactions */
-
-    $('#listing-metabox-transactions .transaction .summary').click(function(e){
-        e.preventDefault();
-        $(this).find('.handle a').text($(this).parent('.transaction').hasClass('open') ? '+' : '-');
-        $(this).parent('.transaction').toggleClass('open');
-        $(this).siblings('.details').toggle();
-    });
-
     /* Listing info metabox / fees */
 
     $('#listing-metabox-fees a.assignfee-link').click(function(e){
@@ -147,49 +156,11 @@ jQuery(document).ready(function($){
         $(this).parent('.assignfee').hide();
     });
 
-    if ( $('#listing-metabox-fees' ).length > 0 ) {
-        $('#listing-metabox-generalinfo, #listing-metabox-fees').each(function(i, v) {
-            var $tab = $(v);
-            $tab.find('.listing-fee-expiration-datepicker').each(function(i, v) {
-                var $dp = $(v);
-                var $changeLink = $dp.siblings('a.listing-fee-expiration-change-link');
-
-                $dp.hide().datepicker({
-                    dateFormat: 'yy-mm-dd',
-                    defaultDate: $changeLink.attr('data-date'),
-                    onSelect: function(newDate) {
-                        location.href = $changeLink.attr('href') + '&expiration_date=' + newDate;
-                    }
-                });
-            });
-
-            $tab.find('a.listing-fee-expiration-change-link').click(function(e) {
-                e.preventDefault();
-
-                var renewal_id = $(this).attr('data-renewalid');
-                $('.listing-fee-expiration-datepicker').not('.renewal-' + renewal_id ).hide();
-                $('.listing-fee-expiration-datepicker.renewal-' + renewal_id).toggle();
-            });
-        });
-
-    }
-
-
     /* Ajax placeholders */
 
     $('.wpbdp-ajax-placeholder').each(function(i,v){
         wpbdp_load_placeholder($(v));
     });
-
-    $('a.delete-image-button').live('click', function(e){
-        e.preventDefault();
-        jQuery.get($(this).attr('href'), function(res){
-            wpbdp_load_placeholder($("#wpbdp-listing-images")); 
-        });
-
-        return false;
-    }); 
-
 
     /*
      * Admin bulk actions
@@ -281,7 +252,10 @@ function wpbdp_load_placeholder($v) {
     $v.load(ajaxurl, {"action": action, "post_id": post_id, "baseurl": baseurl});
 }
 
+
 var WPBDP_Admin = {};
+WPBDP_Admin.payments = {};
+WPBDP_Admin.listingMetabox = {};
 
 // TODO: integrate this into $.
 WPBDP_Admin.ProgressBar = function($item, settings) {
@@ -298,3 +272,189 @@ WPBDP_Admin.ProgressBar = function($item, settings) {
         this.$bar.find('.progress-bar-inner').attr('style', 'width: ' + pcg + '%;');
     };
 };
+
+(function($) {
+    WPBDP_Admin.dialog = {};
+    var dialog = WPBDP_Admin.dialog;
+
+        // if ($('#wpbdp-modal-dialog').length == 0) {
+        //     $('body').append($('<div id="wpbdp-modal-dialog"></div>'));
+        // }    
+})(jQuery);
+
+
+
+(function($) {
+    var payments = WPBDP_Admin.payments;
+
+    payments._initialize = function() {
+        $('#BusinessDirectory_listinginfo a.payment-details-link').click(function(e) {
+            e.preventDefault();
+            payments.viewPaymentDetails( $(this).attr('data-id') );
+        });
+
+        if ($('#wpbdp-modal-dialog').length == 0) {
+            $('body').append($('<div id="wpbdp-modal-dialog"></div>'));
+        }
+    };
+
+    payments.viewPaymentDetails = function(id) {
+        $.get( ajaxurl, { 'action': 'wpbdp-payment-details', 'id': id }, function(res) {
+            if (res && res.success) {
+                $('#wpbdp-modal-dialog').html(res.data.html);
+                tb_show('', '#TB_inline?inlineId=wpbdp-modal-dialog');
+            }
+        }, 'json' );
+    };
+
+    // Initialize payments.
+    $(document).ready(function(){ payments._initialize(); });
+
+})(jQuery);
+
+(function($) {
+    var metabox = WPBDP_Admin.listingMetabox;
+
+    metabox._initialize = function() {
+        // Expiration date changing.
+        $('#listing-metabox-generalinfo, #listing-metabox-fees').each(function(i, v) {
+            var $tab = $(v);
+            $tab.find('.expiration-date-info .datepicker').each(function(i, v) {
+                var $dp = $(v);
+                var $changeLink = $dp.siblings('a.expiration-change-link');
+
+                $dp.hide().datepicker({
+                    dateFormat: 'yy-mm-dd',
+                    defaultDate: $changeLink.attr('data-date'),
+                    onSelect: function(newDate) {
+                        if (newDate) {
+                            var $expirationDate = $(this).siblings('.expiration-date');
+                            var $spinner = $(this).parents('.listing-category').find('.spinner:first');
+
+                            $expirationDate.text('--'); $spinner.show();
+
+                            $.post(ajaxurl, {action: 'wpbdp-listing_set_expiration', renewal_id: $changeLink.attr('data-renewal_id'), expiration_date: newDate}, function(res) {
+                                    if (res && res.success)
+                                    $spinner.hide();
+                                    $expirationDate.text(res.data.formattedExpirationDate).show();
+                                }, 'json');
+                        }
+
+                        $(this).hide();
+                        
+                    }
+                });
+            });
+
+            $tab.find('a.expiration-change-link').click(function(e) {
+                e.preventDefault();
+
+                var renewal_id = $(this).attr('data-renewal_id');
+                $('.expiration-date-info .datepicker').not('.renewal-' + renewal_id ).hide();
+                $('.expiration-date-info .datepicker.renewal-' + renewal_id).toggle();
+            });
+        });
+
+        // Listing category deletion.
+        $('.listing-category a.category-delete').click(function(e) {
+            e.preventDefault();
+            
+            var listingID = $(this).attr('data-listing');
+            var categoryID = $(this).attr('data-category');
+            
+            if ( !listingID || !categoryID ) {
+                return;
+            }
+            
+            var $category = $('.listing-category-' + categoryID);
+            $.post(ajaxurl, {action: 'wpbdp-listing_remove_category', 'listing': listingID, 'category': categoryID}, function(res) {
+                if (res && res.success) {
+                    $('input[name="tax_input[wpbdp_category][]"][value="' + categoryID + '"]').attr('checked', false);
+                    $category.fadeOut(function(){ $(this).remove(); });
+                }
+            }, 'json');
+        });
+        
+        // Listing category fee change.
+        $('.listing-category a.category-change-fee').click(function(e) {
+            e.preventDefault();
+            
+            if ($('#wpbdp-modal-dialog').length == 0) {
+                $('body').append($('<div id="wpbdp-modal-dialog"></div>'));
+            }
+
+            $.post(ajaxurl, {'action': 'wpbdp-listing_change_fee', 'renewal': $(this).attr('data-renewal')}, function(res) {
+                if (res && res.success) {
+                    $('#wpbdp-modal-dialog').html(res.data.html);
+                    tb_show('', '#TB_inline?inlineId=wpbdp-modal-dialog');
+                }
+            }, 'json');
+        });
+    };
+
+    $(document).ready(function(){
+        if ( $('#listing-metabox-fees').length > 0 ) {
+            metabox._initialize();
+        }
+    });
+
+})(jQuery);
+
+/* {{ Settings. */
+(function($) {
+    var s = WPBDP_Admin.settings = {
+        _whenTrueActivateChilds: {},
+
+        init: function() {
+            var t = this;
+
+            $.each( this._whenTrueActivateChilds, function( p, chs ) {
+                $('input[name="wpbdp-' + p + '"]').change(function(e) {
+                    t.handleToggle( p );
+                });
+
+                t.handleToggle( p );
+            } );
+        },
+
+        handleToggle: function( setting ) {
+            var childs = this._whenTrueActivateChilds[ setting ];
+
+            if ( 'undefined' === typeof( childs ) )
+                return;
+
+            var checked = $( 'input[name="wpbdp-' + setting + '"]').is(':checked');
+            
+            $.each( this._whenTrueActivateChilds[ setting ], function( i, c ) {
+                var $c = $( '[name="wpbdp-' + c + '"], [name="wpbdp-' + c + '[]"]' );
+                var $row = $c.parents( 'tr' );
+
+                // FIXME: 'disabled' fields result in the setting being "cleared" in the backend. Why?
+                if ( checked ) {
+//                    $c.removeAttr( 'disabled' );
+                    $c.removeAttr( 'contenteditable' );
+                    $row.removeClass('disabled');
+                } else {
+//                    $c.attr( 'disabled', 'disabled' );
+                    $c.attr( 'contenteditable', 'false' );
+                    $row.addClass('disabled');
+                }
+            } );
+        },
+
+        add_requirement: function( setting, parent_, req ) {
+            if ( 'undefined' === typeof this._whenTrueActivateChilds[ parent_ ] )
+                this._whenTrueActivateChilds[ parent_ ] = [];
+
+            this._whenTrueActivateChilds[ parent_ ].push( setting );
+        }
+    };
+
+    $(document).ready(function(){
+        if ( 0 == $('body.directory-admin_page_wpbdp_admin_settings').length )
+            return;
+
+        s.init();
+    });
+})(jQuery);
+/* }} */

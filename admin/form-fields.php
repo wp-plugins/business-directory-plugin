@@ -18,7 +18,7 @@ class WPBDP_FormFieldsTable extends WP_List_Table {
             'label' => _x('Label / Association', 'form-fields admin', 'WPBDM'),
             'type' => _x('Type', 'form-fields admin', 'WPBDM'),
             'validator' => _x('Validator', 'form-fields admin', 'WPBDM'),
-            'tags' => '',
+            'tags' => _x( 'Field Attributes', 'form-fields admin', 'WPBDM' ),
         );
     }
 
@@ -31,7 +31,8 @@ class WPBDP_FormFieldsTable extends WP_List_Table {
 
     /* Rows */
     public function column_order($field) {
-        return sprintf( '<a href="%s"><strong>↑</strong></a> | <a href="%s"><strong>↓</strong></a>',
+        return sprintf( '<span class="wpbdp-drag-handle" data-field-id="%s"></span> <a href="%s"><strong>↑</strong></a> | <a href="%s"><strong>↓</strong></a>',
+                        $field->get_id(),
                         esc_url( add_query_arg( array('action' => 'fieldup', 'id' => $field->get_id() ) ) ) ,
                         esc_url( add_query_arg( array('action' => 'fielddown', 'id' => $field->get_id() ) ) )
                        );
@@ -43,9 +44,11 @@ class WPBDP_FormFieldsTable extends WP_List_Table {
                                     esc_url( add_query_arg( array( 'action' => 'editfield', 'id' => $field->get_id() ) ) ),
                                     _x( 'Edit', 'form-fields admin', 'WPBDM' ) );
 
-        $actions['delete'] = sprintf( '<a href="%s">%s</a>',
-                                     esc_url( add_query_arg( array( 'action' => 'deletefield', 'id' => $field->get_id() ) ) ),
-                                     _x( 'Delete', 'form-fields admin', 'WPBDM') );
+        if ( ! $field->has_behavior_flag( 'no-delete' ) ) {
+            $actions['delete'] = sprintf( '<a href="%s">%s</a>',
+                                         esc_url( add_query_arg( array( 'action' => 'deletefield', 'id' => $field->get_id() ) ) ),
+                                         _x( 'Delete', 'form-fields admin', 'WPBDM') );
+        }
 
         $html = '';
         $html .= sprintf( '<strong><a href="%s">%s</a></strong> (as <i>%s</i>)',
@@ -162,7 +165,7 @@ class WPBDP_FormFieldsAdmin {
 
     /* preview form */
     private function previewForm() {
-        require_once( WPBDP_PATH . 'views/submit-listing.php' );
+        require_once( WPBDP_PATH . 'core/view-submit-listing.php' );
 
         if ( wpbdp()->has_module( 'featuredlevels' ) )
             wpbdp_admin()->messages[] = _x( 'This is a preview of the form as it will appear during "Submit a Listing". The users may not see all fields from "Manage Form Fields" because you have "Featured Levels" active and this is showing the base level.',
@@ -176,8 +179,9 @@ class WPBDP_FormFieldsAdmin {
         ));
         $html .= wpbdp_admin_notices();
 
-        $controller = new WPBDP_SubmitListingPage();
+        $controller = new WPBDP_Submit_Listing_Page( 0, true );
         $html .= $controller->preview_listing_fields_form();
+
         $html .= wpbdp_admin_footer();
 
         echo $html;
@@ -220,7 +224,7 @@ class WPBDP_FormFieldsAdmin {
         wpbdp_render_page( WPBDP_PATH . 'admin/templates/form-fields-addoredit.tpl.php',
                            array(
                             'field' => $field,
-                            'field_associations' => $api->get_associations(),
+                            'field_associations' => $api->get_associations_with_flags(),
                             'field_types' => $api->get_field_types(),
                             'validators' => $api->get_validators(),
                             'association_field_types' => $api->get_association_field_types()
@@ -233,7 +237,7 @@ class WPBDP_FormFieldsAdmin {
 
         $field = WPBDP_FormField::get( $_REQUEST['id'] );
 
-        if ( !$field )
+        if ( !$field || $field->has_behavior_flag( 'no-delete' ) )
             return;
 
         if ( isset( $_POST['doit'] ) ) {
