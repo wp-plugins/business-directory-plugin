@@ -427,6 +427,8 @@ class WPBDP_CSVImporter {
     }
 
     private function import_row($data, &$errors=null, &$warnings=null) {
+        global $wpdb;
+
         $errors = array();
         $warnings = array();
 
@@ -440,6 +442,7 @@ class WPBDP_CSVImporter {
         $listing_images = array();
         $listing_fields = array();
         $listing_metadata = array( 'featured_level' => '', 'expires_on' => array() );
+
 
         foreach ($this->header as $i => $header_name) {
             if ( ($header_name == 'image' || $header_name == 'images') ) {
@@ -478,6 +481,11 @@ class WPBDP_CSVImporter {
                 continue;
             }
 
+            if ( 'sequence_id' == $header_name ) {
+                $listing_metadata['sequence_id'] = $data[ $i ];
+                continue;
+            }
+
             if (!array_key_exists($header_name, $this->fields)) {
                 $warnings[] = sprintf(_x('Ignoring unknown field "%s"', 'admin csv-import', 'WPBDM'), $header_name);
                 continue;
@@ -495,6 +503,7 @@ class WPBDP_CSVImporter {
 
                 foreach ($categories as $category_name) {
                     $category_name = strip_tags(str_replace("\n", "-", $category_name));
+                    $category_name = str_replace( array( '"', "'" ), '', $category_name );
 
                     if (!$category_name)
                         continue;
@@ -527,7 +536,7 @@ class WPBDP_CSVImporter {
                 // $tags = $field->convert_input( $tags );
                 $listing_fields[$field->get_id()] = $tags;
             } else {
-                $listing_fields[$field->get_id()] = $field->convert_input( $data[$i] );
+                $listing_fields[$field->get_id()] = $field->convert_csv_input( $data[$i] );
             }
         }
 
@@ -584,11 +593,25 @@ class WPBDP_CSVImporter {
         if ($this->settings['test-import'])
             return true;
 
-        $listing = WPBDP_Listing::create( $state );
-        $listing->set_field_values( $state->fields );
-        $listing->set_images( $state->images );
-        $listing->set_categories( $state->categories );
-        $listing->save();
+        $listing = false;
+        if ( isset( $listing_metadata['sequence_id'] ) && $listing_metadata['sequence_id'] ) {
+            $post_id = intval( $wpdb->get_var( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value = %s LIMIT 1",
+                                                               '_wpbdp[import_sequence_id]', $listing_metadata['sequence_id'] ) ) );
+            if ( $post_id && false !== get_post_status( $post_id ) )
+                $listing = WPBDP_Listing::get( $post_id );
+        }
+
+        if ( ! $listing ) {
+            $listing = WPBDP_Listing::create( $state );
+            $listing->set_field_values( $state->fields );
+            $listing->set_images( $state->images );
+            $listing->set_categories( $state->categories );
+            $listing->set_post_status( wpbdp_get_option( 'new-post-status' ) );
+            $listing->save();
+        } else {
+            $listing->update( $state );
+            $listing->set_post_status( wpbdp_get_option( 'edit-post-status' ) );
+        }
 
         // create permalink
         $post = get_post($listing->get_id());
@@ -617,8 +640,6 @@ class WPBDP_CSVImporter {
         }
 
         if ( $listing_metadata['expires_on'] ) {
-            global $wpdb;
-
             foreach ( $state->categories as $i => $category_id ) {
                 if ( isset( $listing_metadata['expires_on'][ $i ] ) ) { // TODO: check is valid date
                     $wpdb->update( $wpdb->prefix . 'wpbdp_listing_fees',
@@ -628,6 +649,9 @@ class WPBDP_CSVImporter {
                 }
             }
         }
+
+        if ( isset( $listing_metadata['sequence_id'] ) && $listing_metadata['sequence_id'] )
+            update_post_meta( $listing->get_id(), '_wpbdp[import_sequence_id]', $listing_metadata['sequence_id'] );
 
         set_time_limit(5);
 

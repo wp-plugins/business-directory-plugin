@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.4
+ * Version: 3.4.1dev
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -30,7 +30,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) ) 
     exit();
 
-define( 'WPBDP_VERSION', '3.4' );
+define( 'WPBDP_VERSION', '3.4.1dev' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -66,7 +66,7 @@ class WPBDP_Plugin {
         register_deactivation_hook( __FILE__, array( &$this, 'plugin_deactivation' ) );
 
         // Enable debugging if needed.
-        if ( get_option( 'wpbdp-debug-on', false ) )
+        if ( defined( 'WP_DEBUG' ) && true == WP_DEBUG )
             $this->debug_on();
 
         // Load dummy objects in case plugins try to do something at an early stage.
@@ -106,10 +106,9 @@ class WPBDP_Plugin {
         $this->formfields = WPBDP_FormFields::instance();
 
         // Install plugin.
+        $this->settings->register_settings();
         $this->_register_post_type();
         $this->install_or_update_plugin();
-
-        $this->settings->register_settings();
 
         if ( $manual_upgrade = get_option( 'wpbdp-manual-upgrade-pending', false ) ) {
             $installer = new WPBDP_Installer();
@@ -444,10 +443,10 @@ class WPBDP_Plugin {
         $state_id = 0;
         $state = null;
 
-        if ( isset( $_REQUEST['state'] ) ) {
+        if ( isset( $_REQUEST['state_id'] ) ) {
             require_once( WPBDP_PATH . 'core/view-submit-listing.php' );
     
-            $state_id = trim( $_REQUEST['state'] );
+            $state_id = trim( $_REQUEST['state_id'] );
             $state = WPBDP_Listing_Submit_State::get( $state_id );
 
             if ( ! $state )
@@ -481,16 +480,19 @@ class WPBDP_Plugin {
                                                  $image_error ); // TODO: handle errors.
 
             if ( $image_error )
-                $errors[] = $image_error;
+                $errors[ $file['name'] ] = $image_error;
             else
                 $attachments[] = $attachment_id;
         }
 
         $html = '';
         foreach ( $attachments as $attachment_id ) {
-            $state->images[] = $attachment_id;
+            if ( $state )
+                $state->images[] = $attachment_id;
+
             $html .= wpbdp_render( 'submit-listing/images-single',
-                                   array( 'image_id' => $attachment_id ),
+                                   array( 'image_id' => $attachment_id,
+                                          'state_id' => $state ? $state->id : '' ),
                                    false );
         }
 
@@ -499,6 +501,15 @@ class WPBDP_Plugin {
             $listing->set_images( $attachments, true );
         } elseif ( $state ) {
             $state->save();
+        }
+
+        if ( $errors ) {
+            $error_msg = '';
+
+            foreach ( $errors as $fname => $error )
+                $error_msg .= sprintf( '&#149; %s: %s', $fname, $error ) . '<br />';
+
+            $res->add( 'uploadErrors', $error_msg );
         }
 
         $res->add( 'attachmentIds', $attachments );
@@ -513,9 +524,10 @@ class WPBDP_Plugin {
         if ( ! $image_id )
             $res->send_error();
 
-        if ( ! current_user_can( 'administrator' ) ) {
+        $state_id = isset( $_REQUEST['state_id'] ) ? $_REQUEST['state_id'] : '';
+
+        if ( $state_id ) {
             require_once( WPBDP_PATH . 'core/view-submit-listing.php' );
-            $state_id = trim( $_REQUEST['state'] );
 
             if ( ! $state_id )
                 $res->send_error();
@@ -545,13 +557,18 @@ class WPBDP_Plugin {
                                                'businessdirectory-manage_listings' ),
                                         array( &$this->controller, 'manage_listings' ) );
         $shortcodes += array_fill_keys( array( 'WPBUSDIRMANVIEWLISTINGS',
+                                               'WPBUSDIRMANMVIEWLISTINGS',
                                                'businessdirectory-view_listings',
+                                               'businessdirectory-viewlistings',
                                                'businessdirectory-listings' ),
                                         array( &$this, '_listings_shortcode' ) );
         $shortcodes += array_fill_keys( array( 'WPBUSDIRMANUI',
                                                'businessdirectory',
                                                'business-directory' ),
                                         array( &$this->controller, 'dispatch' ) );
+        $shortcodes += array_fill_keys( array( 'businessdirectory-search',
+                                               'businessdirectory_search' ),
+                                        array( &$this->controller, 'search' ) );
         $shortcodes['businessdirectory-featuredlistings'] = array( &$this, '_featured_listings_shortcode' );
 
         return apply_filters( 'wpbdp_shortcodes', $shortcodes );
@@ -844,17 +861,20 @@ class WPBDP_Plugin {
      */
     public function register_common_scripts() {
         // jQuery-FileUpload.
-        wp_register_script( 'jquery-fileupload-ui-widget', WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/vendor/jquery.ui.widget.js' );
-        wp_register_script( 'jquery-fileupload-iframe-transport', WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/jquery.iframe-transport.js' );
+        wp_register_script( 'jquery-fileupload-ui-widget',
+                            WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/vendor/jquery.ui.widget' . ( ! $this->is_debug_on() ? '.min' : '' ) . '.js' );
+        wp_register_script( 'jquery-fileupload-iframe-transport',
+                            WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/jquery.iframe-transport' . ( ! $this->is_debug_on() ? '.min' : '' ) . '.js' );
         wp_register_script( 'jquery-fileupload',
-                            WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/jquery.fileupload.js',
+                            WPBDP_URL . 'vendors/jQuery-File-Upload-9.5.7/js/jquery.fileupload' . ( ! $this->is_debug_on() ? '.min' : '' ) . '.js',
                             array( 'jquery',
                                    'jquery-fileupload-ui-widget',
                                    'jquery-fileupload-iframe-transport' ) );
 
         // Drag & Drop.
-        wp_register_style( 'wpbdp-dnd-upload', WPBDP_URL . 'core/css/dnd-upload.css' );
-        wp_register_script( 'wpbdp-dnd-upload', WPBDP_URL . 'core/js/dnd-upload.js', array( 'jquery-fileupload' ) );
+        wp_register_style( 'wpbdp-dnd-upload', WPBDP_URL . 'core/css/dnd-upload' . ( ! $this->is_debug_on() ? '.min' : '' ) . '.css' );
+        wp_register_script( 'wpbdp-dnd-upload', WPBDP_URL . 'core/js/dnd-upload' . ( ! $this->is_debug_on() ? '.min' : '' ) . '.js',
+                            array( 'jquery-fileupload' ) );
     }
 
     public function is_plugin_page() {
@@ -935,7 +955,7 @@ class WPBDP_Plugin {
         wp_enqueue_script( 'wpbdp-js' );
 
         if ( wpbdp_get_option( 'payments-on') && wpbdp_get_option( 'googlewallet' ) ) {
-            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet.min.js', array( 'wpbdp-js' ) );
+            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet' . ( $this->is_debug_on() ? '.min' : '' ) .  '.js', array( 'wpbdp-js' ) );
         }
     }
 
@@ -1149,13 +1169,6 @@ class WPBDP_Plugin {
                 break;
 
             case 'main':
-                if ( $this->_do_wpseo ) {
-                    global $wpseo_front;
-
-                    $title = $wpseo_front->get_content_title( get_post( $listing_id ) );
-                    $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );                    
-                }
-                
                 break;
 
             default:

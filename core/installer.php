@@ -27,6 +27,8 @@
             wpbdp_log('New installation. Creating default form fields.');
             global $wpbdp;
             $wpbdp->formfields->create_default_fields();
+
+            add_option( 'wpbdp-show-drip-pointer', 1 );
         }
 
         delete_option('wpbusdirman_db_version');
@@ -38,7 +40,7 @@
             wp_schedule_event(current_time('timestamp'), 'hourly', 'wpbdp_listings_expiration_check');
         } else {
             wpbdp_log('Expiration check was in schedule. Nothing to do.');
-        }        
+        }
     }
 
     /**
@@ -567,6 +569,18 @@
                     $t['currency_code'] = get_option( 'wpbdp-currency' );
                     $t['migrated'] = 1;
 
+                    if ( ! isset( $t['processed_on'] ) || empty( $t['processed_on'] ) )
+                        unset( $t['processed_on'] );
+
+                    if ( ! isset( $t['created_on'] ) || empty( $t['created_on'] ) )
+                        unset( $t['created_on'] );
+
+                    if ( ! isset( $t['listing_id'] ) || empty( $t['listing_id'] ) )
+                        $t['listing_id'] = 0;
+
+                    if ( ! isset( $t['amount'] ) || empty( $t['amount'] ) )
+                        $t['amount'] = '0.0';
+
                     // TODO: delete duplicated pending transactions (i.e. two renewals for the same category & listing ID that are 'pending').
 
                     switch ( $t['payment_type'] ) {
@@ -662,7 +676,7 @@ class WPBDP_Installer_Manual_Upgrade {
         add_action( 'admin_enqueue_scripts', array( &$this, 'enqueue_scripts' ) );
         add_action( 'wp_ajax_wpbdp-manual-upgrade', array( &$this, 'handle_ajax' ) );
 
-        $this->installer = &$installer;
+        $this->installer = $installer;
         $this->callback = $callback;
     }
 
@@ -692,7 +706,7 @@ class WPBDP_Installer_Manual_Upgrade {
             }
         }
 
-        add_submenu_page( null,
+        add_submenu_page( 'options.php',
                           __( 'Business Directory - Manual Upgrade', 'WPBDM' ),
                           __( 'Business Directory - Manual Upgrade', 'WPBDM' ),
                           'administrator',

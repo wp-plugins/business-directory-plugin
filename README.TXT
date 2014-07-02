@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory, wordpress directory, wordpress directory plugin, wordpress directory theme, wordpress business directory, business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget, church directory, address book, address, member directory, members directory, city portal, city portal plugin, city guide plugin, city guide
 Requires at least: 3.6
 Tested up to: 3.9.3
-Last Updated: 2014-June-20
-Stable tag: tags/3.4
+Last Updated: 2014-July-2
+Stable tag: tags/3.4.1
 License: GPLv2 or later
 
 Business Directory Plugin allows you to build local directories, business provider listings, Yellow-Pages style business directories, Yelp-like review sections and more. 
@@ -38,6 +38,7 @@ Business Directory Plugin allows you to build local directories, business provid
 * Display Category Icons/Allow Parent-Child Category Navigation (using the Enhanced Category Module)
 * Manage attachments on listings (using the Attachments module, supports PDF, Text files, images)
 * Accept payments using Stripe (using the Stripe Gateway Module) (NEW!)
+* Accept payments using PayFast (using the PayFast Gateway Module) (NEW!)
 
 For a complete and detailed list of features, please visit:  http://businessdirectoryplugin.com/features/
  
@@ -46,6 +47,8 @@ Please report any bugs you find via http://businessdirectoryplugin.com/support-f
 = Premium Module Links: =
 These are optional modules that you can use to enhance Business Directory Plugin's functionality and
 support future development:
+
+NEW! [PayFast Gateway Module](http://businessdirectoryplugin.com/premium-modules/payfast-module?ref=wp)
 
 NEW! [Stripe Gateway Module](http://businessdirectoryplugin.com/premium-modules/stripe-module?ref=wp)
 
@@ -105,6 +108,18 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+
+= Version 3.4.1 =
+* Various upgrade routine fixes
+* Respect default post statuses after CSV import
+* Quick search fixes
+* Better handle JWT class conflicts
+* Fix typo to support old shortcodes
+* Prefix some CSS classes to avoid theme conflicts
+* Better support for MySQL’s STRICT mode
+* Fix shortcode detection
+* Various image upload fixes
+* Added shortcode for advanced search page [businessdirectory-search]
 
 = Version 3.4 =
 * New [businessdirectory-featuredlistings] shortcode. 

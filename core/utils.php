@@ -184,35 +184,34 @@ function wpbdp_media_upload($file, $use_media_library=true, $check_image=false, 
             $error_msg = sprintf( _x( 'File type "%s" is not allowed', 'utils', 'WPBDM' ), $file['type'] );
             return false;
         }
-        
-        if ( $upload = wp_handle_upload( $file, array('test_form' => FALSE) ) ) {
-            if ( !$use_media_library ) {
-                if (!is_array($upload) || isset($upload['error'])) {
-                    $error_msg = $upload['error'];
-                    return false;
-                }
 
-                return $upload;
+        $upload = wp_handle_upload( $file, array('test_form' => FALSE) );
+
+        if( ! $upload || ! is_array( $upload ) || isset( $upload['error'] ) ) {
+            $error_msg = isset( $upload['error'] ) ? $upload['error'] : _x( 'Unkown error while uploading file.', 'utils', 'WPBDM' );
+            return false;
+        }
+
+        if ( !$use_media_library )
+            return $upload;
+
+        if ( $attachment_id = wp_insert_attachment(array(
+            'post_mime_type' => $upload['type'],
+            'post_title' => preg_replace('/\.[^.]+$/', '', basename($upload['file'])),
+            'post_content' => '',
+            'post_status' => 'inherit'
+        ), $upload['file']) ) {
+            $attach_metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
+            wp_update_attachment_metadata( $attachment_id, $attach_metadata );
+
+            if ( $check_image && !wp_attachment_is_image( $attachment_id ) ) {
+                wp_delete_attachment( $attachment_id, true );
+
+                $error_msg = _x('Uploaded file is not an image', 'utils', 'WPBDM');
+                return false;
             }
 
-            if ( $attachment_id = wp_insert_attachment(array(
-                'post_mime_type' => $upload['type'],
-                'post_title' => preg_replace('/\.[^.]+$/', '', basename($upload['file'])),
-                'post_content' => '',
-                'post_status' => 'inherit'
-            ), $upload['file']) ) {
-                $attach_metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
-                wp_update_attachment_metadata( $attachment_id, $attach_metadata );
-
-                if ( $check_image && !wp_attachment_is_image( $attachment_id ) ) {
-                    wp_delete_attachment( $attachment_id, true );
-
-                    $error_msg = _x('Uploaded file is not an image', 'utils', 'WPBDM');
-                    return false;
-                }
-
-                return $attachment_id;
-            }
+            return $attachment_id;
         }
     } else {
         $error_msg = _x('Error while uploading file', 'utils', 'WPBDM');
@@ -362,13 +361,12 @@ function wpbdp_get_term_name( $id_or_slug, $taxonomy = WPBDP_CATEGORY_TAX, $fiel
 
     if ( ! $term )
         return '';
-                  
+
     return $term->name;
 }
 
 function wpbdp_has_shortcode( &$content, $shortcode ) {
     $check = has_shortcode( $content, $shortcode );
-    $check = false;
 
     if ( ! $check ) {
         // Sometimes has_shortcode() fails so we try another approach.
@@ -377,6 +375,59 @@ function wpbdp_has_shortcode( &$content, $shortcode ) {
     }
 
     return $check;
+}
+
+function wpbdp_admin_pointer( $selector, $title, $content_ = '',
+                              $primary_button = false, $primary_action = '',
+                              $secondary_button = false, $secondary_action = '',
+                              $options = array() ) {
+    if ( ! current_user_can( 'administrator' ) || ( get_bloginfo( 'version' ) < '3.3' ) )
+        return;
+
+    $content  = '';
+    $content .= '<h3>' . $title . '</h3>';
+    $content .= '<p>' . $content_ . '</p>';
+?>
+<script type="text/javascript">
+//<![CDATA[
+jQuery(function( $ ) {
+        var wpbdp_pointer = $( '<?php echo $selector; ?>' ).pointer({
+            'content': <?php echo json_encode( $content ); ?>,
+            'position': { 'edge': '<?php echo isset( $options['edge'] ) ? $options['edge'] : 'top'; ?>',
+                          'align': '<?php echo isset( $options['align'] ) ? $options['align'] : 'center'; ?>' },
+            'buttons': function( e, t ) {
+                <?php if ( ! $secondary_button ): ?>
+                var b = $( '<a id="wpbdp-pointer-b1" class="button-primary">' + '<?php echo $primary_button; ?>' + '</a>' );
+                <?php else: ?>
+                var b = $( '<a id="wpbdp-pointer-b2" class="button-secondary" style="margin-right: 15px;">' + '<?php echo $secondary_button; ?>' + '</a>' );
+                <?php endif; ?>
+                return b;
+            }
+        }).pointer('open');
+
+        <?php if ( $secondary_button ): ?>
+        $( '#wpbdp-pointer-b2' ).before( '<a id="wpbdp-pointer-b1" class="button-primary">' + '<?php echo $primary_button; ?>' + '</a>' );
+        $( '#wpbdp-pointer-b2' ).click(function(e) {
+            e.preventDefault();
+            <?php if ( $secondary_action ): ?>
+            <?php echo $secondary_action; ?>
+            <?php endif; ?>
+            wpbdp_pointer.pointer( 'close' );
+        });
+        <?php endif; ?>
+
+        $( '#wpbdp-pointer-b1' ).click(function(e) {
+            e.preventDefault();
+            <?php if ( $primary_action ): ?>
+            <?php echo $primary_action; ?>
+            <?php endif; ?>
+            wpbdp_pointer.pointer( 'close' );
+        });
+
+});
+//]]>
+</script>
+<?php
 }
 
 /**

@@ -106,12 +106,26 @@ class WPBDP_FormFieldType {
         return $this->get_field_value( $field, $post_id );
     }
 
+    /**
+     * @since 3.4.1
+     */
+    public function get_field_csv_value( &$field, $post_id ) {
+        return $this->get_field_plain_value( $field, $post_id );
+    }
+
     public function is_empty_value( $value ) {
         return empty( $value );
     }
 
     public function convert_input( &$field, $input ) {
         return $input;
+    }
+
+    /**
+     * @since 3.4.1
+     */
+    public function convert_csv_input( &$field, $input = '' ) {
+        return $this->convert_input( $field, $input );
     }
 
     public function store_field_value( &$field, $post_id, $value ) {
@@ -152,7 +166,7 @@ class WPBDP_FormFieldType {
 
         switch ( $render_context ) {
             case 'search':
-                $html .= sprintf( '<div class="search-filter %s %s" %s>',
+                $html .= sprintf( '<div class="wpbdp-search-filter %s %s" %s>',
                                   $field->get_field_type()->get_id(),
                                   implode(' ', $field->css_classes ),
                                   $this->html_attributes( $field->html_attributes ) );
@@ -253,7 +267,8 @@ class WPBDP_FormFieldType {
             if ( $labelorfield->has_display_flag( 'social' ) )
                 return $content;
 
-            $css_classes .= 'wpbdp-field-' . strtolower( str_replace( array( ' ', '/', '(', ')' ), '', $labelorfield->get_label() ) ) . ' ' . $labelorfield->get_association() . ' ';
+            $css_classes .= 'wpbdp-field-' . strtolower( str_replace( array( ' ', '/', '(', ')' ), '', $labelorfield->get_label() ) ) . ' ';
+            $css_classes .= 'wpbdp-field-' . $labelorfield->get_association() . ' ';
             $label = $labelorfield->has_display_flag( 'nolabel' ) ? null : $labelorfield->get_label();
         } else {
             $label = $labelorfield;
@@ -588,12 +603,27 @@ class WPBDP_FormField {
     }
 
     /**
+     * @since 3.4.1
+     */
+    public function csv_value( $post_id ) {
+        $value = $this->type->get_field_csv_value( $this, $post_id );
+        return apply_filters( 'wpbdp_form_field_csv_value', $value, $post_id, $this );
+    }
+
+    /**
      * Converts input from forms to a value useful for this field.
      * @param mixed $input form input.
      * @return mixed
      */
     public function convert_input( $input=null ) {
         return $this->type->convert_input( $this, $input );
+    }
+
+    /**
+     * @since 3.4.1
+     */
+    public function convert_csv_input( $input = '' ) {
+        return $this->type->convert_csv_input( $this, $input );
     }
 
     public function store_value( $post_id, $value ) {
@@ -834,8 +864,8 @@ class WPBDP_FormField {
                 break;
             case 'meta':
                 $pieces['fields'] .= '';
-                $pieces['join'] = " LEFT JOIN {$wpdb->postmeta} AS mt{$id} ON {$wpdb->posts}.ID = mt{$id}.post_id";
-                $pieces['where'] = $wpdb->prepare( " OR (mt{$id}.meta_key = %s AND mt{$id}.meta_value LIKE '%%%s%%') ",
+                $pieces['join'] .= " LEFT JOIN {$wpdb->postmeta} AS mt{$id} ON {$wpdb->posts}.ID = mt{$id}.post_id";
+                $pieces['where'] .= $wpdb->prepare( " OR (mt{$id}.meta_key = %s AND mt{$id}.meta_value LIKE '%%%s%%') ",
                                                    '_wpbdp[fields][' . $id . ']',
                                                    $q
                                                  );
@@ -907,7 +937,7 @@ class WPBDP_FormFields {
         $this->register_association( 'tags', _x( 'Post Tags', 'form-fields api', 'WPBDM' ), array( 'unique' ) );
         $this->register_association( 'meta', _x( 'Post Metadata', 'form-fields api', 'WPBDM' ) );
 
-        $this->register_association( 'custom', _x('Custom', 'form-fields api', 'WPBDM'), array( ) );
+        $this->register_association( 'custom', _x('Custom', 'form-fields api', 'WPBDM'), array( 'private' ) );
 
         // register core field types
         $this->register_field_type( 'WPBDP_FieldTypes_TextField', 'textfield' );
@@ -999,7 +1029,7 @@ class WPBDP_FormFields {
 
         foreach ( $this->associations as $assoc_id => $assoc_label ) {
             $flags = $this->association_flags[ $assoc_id ];
-            $res[] = (object) array( 'id' => $assoc_id, 'label' => $assoc_label, 'flags' => $flags );
+            $res[ $assoc_id ] = (object) array( 'id' => $assoc_id, 'label' => $assoc_label, 'flags' => $flags );
         }
 
         return $res;
@@ -1218,7 +1248,7 @@ class WPBDP_FormFields {
             $name = str_replace( array( ',', ';' ), '', $name );
             $name = str_replace( array( ' ', '/' ), '-', $name );
 
-            if ( $name == 'images' || $name == 'image' || $name == 'username' || $name == 'featured_level' || $name == 'expires_on' || in_array( $name, $names, true ) ) {
+            if ( $name == 'images' || $name == 'image' || $name == 'username' || $name == 'featured_level' || $name == 'expires_on' || $name == 'sequence_id' || in_array( $name, $names, true ) ) {
                 $name = $field->get_id() . '/' . $name;
             }
             
