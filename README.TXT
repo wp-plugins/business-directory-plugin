@@ -8,7 +8,7 @@ Last Updated: 2014-Sep-3
 Stable tag: tags/3.5
 License: GPLv2 or later
 
-Business Directory Plugin allows you to build local directories, business provider listings, Yellow-Pages style business directories, Yelp-like review sections and more. 
+Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
 
 == Description ==
 
