@@ -20,8 +20,12 @@ class WPBDP_Renew_Listing_Page extends WPBDP_View {
        if ( ! $this->obtain_renewal_info() )
             return wpbdp_render_msg( _x( 'Your renewal ID is invalid. Please use the URL you were given on the renewal e-mail message.', 'renewal', 'WPBDM' ), 'error' );
 
-        if ( ! wpbdp_user_can( 'edit', $this->listing->get_id() ) )
-            return wpbdp_render_msg( _x( 'You don\'t have permission to access this page.', 'renewal', 'WPBDM' ), 'error' );
+        if ( ! wpbdp_user_can( 'edit', $this->listing->get_id() ) ) {
+            $html  = '';
+//            $html .= wpbdp_render_msg( _x( 'You don\'t have permission to access this page. Please login.', 'renewal', 'WPBDM' ), 'error' );
+            $html .= wpbdp_render( 'parts/login-required', array(), false );
+            return $html;
+        }
 
         if ( $this->category->recurring )
             return $this->recurring_management();
@@ -93,7 +97,7 @@ class WPBDP_Renew_Listing_Page extends WPBDP_View {
         $html .= '<dd>' . date_i18n( get_option( 'date_format' ), strtotime( $this->category->expires_on ) ) . '</dd>';        
         $html .= '</dl>';
 
-        $html .= '<p>' . _x( 'However, if you want to cancel your subscription you can do this on this page. When the renewal time comes you\'ll be able to change your settings again.', 'renew', 'WPBDM' ) . '</p>';
+        $html .= '<p>' . _x( 'However, if you want to cancel your subscription you can do that on this page. When the renewal time comes you\'ll be able to change your settings again.', 'renew', 'WPBDM' ) . '</p>';
         $html .= $wpbdp->payments->render_unsubscribe_integration( $this->category, $this->listing );
 
         $html .= '</div>';

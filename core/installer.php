@@ -1,8 +1,8 @@
 <?php
- 
- class WPBDP_Installer {
 
-    const DB_VERSION = '3.8';
+class WPBDP_Installer {
+
+    const DB_VERSION = '3.9';
 
     private $installed_version = null;
 
@@ -119,8 +119,7 @@
         $schema['submit_state'] = "CREATE TABLE {$wpdb->prefix}wpbdp_submit_state (
             id varchar(64) CHARACTER SET utf8 COLLATE utf8_general_ci PRIMARY KEY,
             state longblob NOT NULL,
-            created datetime NOT NULL,
-            updated datetime NULL
+            updated_on datetime NOT NULL
         ) DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
 
         return apply_filters( 'wpbdp_database_schema', $schema );
@@ -140,7 +139,10 @@
     public function _update() {
         global $wpbdp;
 
-        $upgrade_routines = array( '2.0', '2.1', '2.2', '2.3', '2.4', '2.5', '3.1', '3.2', '3.4', '3.5', '3.6', '3.7' );
+        if ( get_option( 'wpbdp-manual-upgrade-pending', false ) )
+            return;
+
+        $upgrade_routines = array( '2.0', '2.1', '2.2', '2.3', '2.4', '2.5', '3.1', '3.2', '3.4', '3.5', '3.6', '3.7', '3.9' );
 
         foreach ( $upgrade_routines as $v ) {
             if ( version_compare( $this->installed_version, $v ) < 0 ) {
@@ -148,6 +150,9 @@
                 $_v = str_replace( '.', '_', $v );
                 call_user_func( array( $this, 'upgrade_to_' . $_v ) );
                 update_option('wpbdp-db-version', $v);
+
+                if ( get_option( 'wpbdp-manual-upgrade-pending', false ) )
+                    break;
             }
         }
     }
@@ -651,7 +656,6 @@
                             break;
                     }
 
-                    
                 }
             }
         }
@@ -661,6 +665,19 @@
                       'status' => $status_msg );
 
         return $res;
+    }
+
+    public function upgrade_to_3_9() {
+        // TODO: make sure this works when passing through manual 3.7 upgrade.
+        global $wpdb;
+
+        if ( $wpdb->get_col( $wpdb->prepare( "SHOW COLUMNS FROM {$wpdb->prefix}wpbdp_submit_state LIKE %s", 'created' ) ) )
+            $wpdb->query( "ALTER TABLE {$wpdb->prefix}wpbdp_submit_state DROP COLUMN created" );
+
+        if ( $wpdb->get_col( $wpdb->prepare( "SHOW COLUMNS FROM {$wpdb->prefix}wpbdp_submit_state LIKE %s", 'updated' ) ) ) {
+            $wpdb->query( "UPDATE {$wpdb->prefix}wpbdp_submit_state SET updated_on = updated" );
+            $wpdb->query( "ALTER TABLE {$wpdb->prefix}wpbdp_submit_state DROP COLUMN updated" );
+        }
     }
 
  }
@@ -714,10 +731,7 @@ class WPBDP_Installer_Manual_Upgrade {
                           array( &$this, 'upgrade_page' ) );
     }
 
-    public function enqueue_scripts( $hook ) {
-        if ( 'admin_page_wpbdp-upgrade-page' !== $hook )
-            return;
-
+    public function enqueue_scripts() {
         wp_enqueue_script( 'wpbdp-manual-upgrade' , WPBDP_URL . 'admin/resources/manual-upgrade.js' );
     }
 

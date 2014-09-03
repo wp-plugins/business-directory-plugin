@@ -19,7 +19,7 @@ class WPBDP_Listing {
      * @param boolean $append if TRUE the specified field values are set without clearing the values for the other fields.
      */
     public function set_field_values( $values = array(), $append = false ) {
-        $fields = wpbdp_get_form_fields( array( 'association' => array( '-title', '-category' ) ) );
+        $fields = wpbdp_get_form_fields( array( 'association' => array( '-category' ) ) );
 
         foreach ( $fields as &$f ) {
             if ( isset( $values[ $f->get_id() ] ) )
@@ -269,6 +269,7 @@ class WPBDP_Listing {
                     case 'expired':
                     case 'ok':
                         $fee_info = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE listing_id = %d AND category_id = %d", $this->id, $category_id ) );
+                        $fee_info_recurring_data = unserialize( $fee_info->recurring_data );
                         
                         if ( ! $fee_info ) {
                             // $this->remove_category( $category_id );
@@ -296,7 +297,7 @@ class WPBDP_Listing {
                         $category->renewal_id = $fee_info->id;
                         $category->recurring = $fee_info->recurring ? true : false;
                         $category->recurring_id = trim( $fee_info->recurring_id );
-                        $category->payment_id = 0;
+                        $category->payment_id = isset( $fee_info_recurring_data['payment_id'] ) ? $fee_info_recurring_data['payment_id'] : 0;
 
                         break;
 
@@ -542,12 +543,10 @@ class WPBDP_Listing {
                     $post_author = get_user_by( 'email', $email );
                     $post_author = $post_author->ID;
                 } else {
-                    $randvalue = wpbdp_generate_password( 5, 2 );
                     $post_author = wp_insert_user( array(
-                        'display_name' => 'Guest ' . $randvalue,
-                        'user_login' => 'guest_' . $randvalue,
+                        'user_login' => 'guest_' . wp_generate_password( 5, false, false ),
                         'user_email' => $email,
-                        'user_pass' => wpbdp_generate_password( 7, 2 )
+                        'user_pass' => wp_generate_password()
                     ) );
                 }
 

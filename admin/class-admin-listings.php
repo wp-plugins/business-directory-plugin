@@ -3,11 +3,36 @@
 class WPBDP_Admin_Listings {
 
     function __construct() {
+        add_action('admin_init', array($this, 'add_metaboxes'));
+
         add_action( 'manage_' . WPBDP_POST_TYPE . '_posts_columns', array( &$this, 'add_columns' ) );
         add_action( 'manage_' . WPBDP_POST_TYPE . '_posts_custom_column', array( &$this, 'listing_column' ), 10, 2 );
 
         add_filter( 'views_edit-' . WPBDP_POST_TYPE, array( &$this, 'listing_views' ) );
         add_filter( 'posts_clauses', array( &$this, 'listings_admin_filters' ) );
+
+        add_filter( 'post_row_actions', array( &$this, 'row_actions' ), 10, 2 );
+
+        add_action( 'save_post', array( &$this, 'save_post' ) );
+
+        add_action('admin_footer', array($this, '_add_bulk_actions'));
+        add_action('admin_footer', array($this, '_fix_new_links'));
+    }
+
+    function add_metaboxes() {
+        add_meta_box( 'BusinessDirectory_listinginfo',
+                      __( 'Listing Information', 'WPBDM' ),
+                      array( 'WPBDP_Admin_Listing_Metabox', 'metabox_callback' ),
+                      WPBDP_POST_TYPE,
+                      'side',
+                      'core' );
+
+        add_meta_box( 'wpbdp-listing-fields',
+                      _x( 'Listing Fields / Images', 'admin', 'WPBDM' ),
+                      array( 'WPBDP_Admin_Listing_Fields_Metabox', 'metabox_callback' ),
+                      WPBDP_POST_TYPE,
+                      'normal',
+                      'core' );
     }
 
     // {{{ Custom columns.
@@ -27,13 +52,13 @@ class WPBDP_Admin_Listings {
                 $columns = array_merge( $columns, $custom_columns );
         }
 
-        return $columns;
+        return apply_filters( 'wpbdp_admin_directory_columns', $columns );
     }
 
 
     function listing_column( $column, $post_id ) {
         if ( ! method_exists( $this, 'listing_column_' . $column ) )
-            return;
+            return do_action( 'wpbdp_admin_directory_column_' . $column, $post_id );
 
         call_user_func( array( &$this, 'listing_column_' . $column ), $post_id );
     }
@@ -94,10 +119,10 @@ class WPBDP_Admin_Listings {
             if ( $sticky_info->downgradeable ) {
                 echo sprintf('<span><a href="%s">%s</a></span>',
                              add_query_arg(array('wpbdmaction' => 'changesticky', 'u' => $sticky_info->downgrade->id, 'post' => $post_id)),
-                             '<b>↓</b> ' . sprintf(__('Downgrade to %s', 'WPBDM'), esc_attr($sticky_info->downgrade->name)) );                
+                             '<b>↓</b> ' . sprintf(__('Downgrade to %s', 'WPBDM'), esc_attr($sticky_info->downgrade->name)) );
             }
         } elseif ( current_user_can('contributor') && wpbdp_user_can( 'upgrade-to-sticky', $post_id ) ) {
-                echo sprintf('<span><a href="%s"><b>↑</b> %s</a></span>', wpbdp_get_page_link('upgradetostickylisting', $post_id), _x('Upgrade to Featured', 'admin actions', 'WPBDM'));            
+                echo sprintf('<span><a href="%s"><b>↑</b> %s</a></span>', wpbdp_get_page_link('upgradetostickylisting', $post_id), _x('Upgrade to Featured', 'admin actions', 'WPBDM'));
         }
 
         echo '</div>';
@@ -107,11 +132,11 @@ class WPBDP_Admin_Listings {
     // }}}
 
     // {{{ List views.
-    
+
     function listing_views( $views ) {
         global $wpdb;
 
-        if ( ! current_user_can( 'administrator' ) ) {
+        if ( ! current_user_can( 'administrator' ) && ! current_user_can( 'editor' ) ) {
             if ( current_user_can( 'contributor' ) && isset( $views['mine'] ) )
                 return array( $views['mine'] );
 
@@ -120,19 +145,23 @@ class WPBDP_Admin_Listings {
 
         $post_statuses = '\'' . join('\',\'', isset($_GET['post_status']) ? array($_GET['post_status']) : array('publish', 'draft', 'pending')) . '\'';
 
-        $paid = $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->posts} p WHERE p.post_type = %s AND p.post_status IN ({$post_statuses})
-            AND NOT EXISTS ( SELECT 1 FROM {$wpdb->prefix}wpbdp_payments ps WHERE ps.listing_id = p.ID AND ps.status = %s )",
-            WPBDP_POST_TYPE,
-            'pending'
-        ) );
-
+//        $unpaid = $wpdb->get_var( $wpdb->prepare(
+//            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->prefix}wpbdp_payments ps ON p.ID = ps.listing_id
+//             WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ps.status = %s",
+//             WPBDP_POST_TYPE,
+//             'pending'
+//        ) );
         $unpaid = $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->prefix}wpbdp_payments ps ON p.ID = ps.listing_id
-             WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ps.status = %s",
-             WPBDP_POST_TYPE,
-             'pending'
-        ) );
+            "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p LEFT JOIN {$wpdb->prefix}wpbdp_payments ps
+             ON (ps.listing_id = p.ID AND ps.status = %s) WHERE p.post_type = %s
+             AND p.post_status IN ({$post_statuses}) AND ps.status IS NOT NULL",
+             'pending',
+             WPBDP_POST_TYPE ) );
+
+        $paid = intval( $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} p WHERE p.post_type = %s AND p.post_status IN ({$post_statuses})",
+            WPBDP_POST_TYPE ) ) ) - $unpaid;
+
         $pending_upgrade = $wpdb->get_var( $wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON (p.ID = pm.post_id)
                                                            WHERE p.post_type = %s AND p.post_status IN ({$post_statuses}) AND ( (pm.meta_key = %s AND pm.meta_value = %s) )",
                                                            WPBDP_POST_TYPE,
@@ -162,6 +191,9 @@ class WPBDP_Admin_Listings {
                                      _x( 'Expired', 'admin', 'WPBDM' ),
                                      number_format_i18n( $expired )
                                     );
+
+        $views = apply_filters( 'wpbdp_admin_directory_views', $views, $post_statuses );
+
         return $views;
     }
 
@@ -191,6 +223,7 @@ class WPBDP_Admin_Listings {
                 $pieces['groupby'] .= " {$wpdb->posts}.ID ";
                 break;
             default:
+                $pieces = apply_filters( 'wpbdp_admin_directory_filter', $pieces, $_REQUEST['wpbdmfilter'] );
                 break;
         }
 
@@ -198,5 +231,100 @@ class WPBDP_Admin_Listings {
     }
 
     // }}}
+
+
+    public function row_actions($actions, $post) {
+        if ($post->post_type == WPBDP_POST_TYPE && current_user_can('contributor')) {
+            if (wpbdp_user_can('edit', $post->ID))
+                $actions['edit'] = sprintf('<a href="%s">%s</a>',
+                                            wpbdp_get_page_link('editlisting', $post->ID),
+                                            _x('Edit Listing', 'admin actions', 'WPBDM'));
+
+            if (wpbdp_user_can('delete', $listing_id))
+                $actions['delete'] = sprintf('<a href="%s">%s</a>', wpbdp_get_page_link('deletelisting', $listing_id), _x('Delete Listing', 'admin actions', 'WPBDM'));
+        }
+
+        return $actions;
+    }
+
+    public function save_post($post_id) {
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE )
+            return;
+
+        // Handle listings saved admin-side.
+        if ( is_admin() && isset( $_POST['post_type'] ) && $_POST['post_type'] == WPBDP_POST_TYPE ) {
+            $listing = WPBDP_Listing::get( $post_id );
+
+            if ( ! $listing )
+                return;
+
+            $listing->fix_categories();
+
+            // Save custom fields.
+            //if ( isset( $_POST['wpbdp-listing-fields-nonce'] ) && wp_verify_nonce( $_POST['wpbdp-listing-fields-nonce'], plugin_basename( __FILE__ ) ) )
+            if ( isset( $_POST['wpbdp-listing-fields-nonce'] ) ) {
+                $formfields_api = wpbdp_formfields_api();
+                $listingfields = wpbdp_getv( $_POST, 'listingfields', array() );
+
+                foreach ( $formfields_api->find_fields( array( 'association' => 'meta' ) ) as $field ) {
+                    if ( isset( $listingfields[ $field->get_id() ] ) ) {
+                        $value = $field->convert_input( $listingfields[ $field->get_id() ] );
+                        $field->store_value( $listing->get_id(), $value );
+                    } else {
+                        $field->store_value( $listing->get_id(), $field->convert_input( null ) );
+                    }
+                }
+
+                if ( isset( $_POST['thumbnail_id'] ) )
+                    $listing->set_thumbnail_id( $_POST['thumbnail_id'] );
+            }
+
+        }
+    }
+
+    public function _add_bulk_actions() {
+        if (!current_user_can('administrator'))
+            return;
+
+        if ($screen = get_current_screen()) {
+            if ($screen->id == 'edit-' . WPBDP_POST_TYPE) {
+                if (isset($_GET['post_type']) && $_GET['post_type'] == WPBDP_POST_TYPE) {
+                    $bulk_actions = array('sep0' => '--',
+                                          'publish' => _x('Publish Listing', 'admin actions', 'WPBDM'),
+                                          'sep1' => '--',
+                                          'upgradefeatured' => _x('Upgrade to Featured', 'admin actions', 'WPBDM'),
+                                          'cancelfeatured' => _x('Downgrade to Normal', 'admin actions', 'WPBDM'),
+                                          'sep2' => '--',
+                                          'setaspaid' => _x('Mark as Paid', 'admin actions', 'WPBDM'),
+                                          'sep3' => '--',
+                                          'renewlisting' => _x( 'Renew Listing', 'admin actions', 'WPBDM' )
+                                         );
+                    $bulk_actions = apply_filters( 'wpbdp_admin_directory_bulk_actions', $bulk_actions );
+
+                    // the 'bulk_actions' filter doesn't really work for this until this bug is fixed: http://core.trac.wordpress.org/ticket/16031
+                    echo '<script type="text/javascript">';
+
+                    foreach ($bulk_actions as $action => $text) {
+                        echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
+                                    'action', 'listing-' . $action, add_query_arg('wpbdmaction', $action), $text);
+                        echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
+                                    'action2', 'listing-' . $action, '', $text);
+                    }
+
+                    echo '</script>';
+                }
+            }
+        }
+    }
+
+    public function _fix_new_links() {
+        // 'contributors' should still use the frontend to add listings (editors, authors and admins are allowed to add things directly)
+        // XXX: this is kind of hacky but is the best we can do atm, there aren't hooks to change add links
+        if (current_user_can('contributor') && isset($_GET['post_type']) && $_GET['post_type'] == WPBDP_POST_TYPE) {
+            echo '<script type="text/javascript">';
+            echo sprintf('jQuery(\'a.add-new-h2\').attr(\'href\', \'%s\');', wpbdp_get_page_link('add-listing'));
+            echo '</script>';
+        }
+    }
 
 }

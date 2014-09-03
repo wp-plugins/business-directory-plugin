@@ -307,9 +307,9 @@ table.wpbdp-debug-section tbody tr:nth-child(2n) {
     font-weight: bold;
 }
 
-ul.subsubsub li.paid {
+/*ul.subsubsub li.paid {
     margin-left: 20px;
-}
+}*/
 
 body.taxonomy-wpbdp_category .column-id {
     width: 35px;
@@ -387,6 +387,19 @@ body.taxonomy-wpbdp_category .column-id {
     display: block;
 }
 
+.directory-admin_page_wpbdp_admin_settings .license-activation .status-message {
+    font-size: 85%;
+    color: #595959;
+    font-style: italic;
+}
+
+.directory-admin_page_wpbdp_admin_settings .license-activation .status-message.ok {
+    color: green;
+}
+
+.directory-admin_page_wpbdp_admin_settings .license-activation .status-message.error {
+    color: red;
+}
 
 .tag.paymentstatus.ok {
     background: green;
@@ -402,6 +415,12 @@ body.taxonomy-wpbdp_category .column-id {
 
 #wpbdp-admin-settings tr.disabled {
     opacity: 0.7;
+}
+
+#wpbdp-admin-settings .text-fields-warning {
+    font-size: 90%;
+    display: block;
+    margin-bottom: 2px;
 }
 
 /* Listing metabox - Transactions. */

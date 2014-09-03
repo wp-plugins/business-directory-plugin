@@ -3,13 +3,13 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.4.1
+ * Version: 3.5
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
  */
 
-/*  Copyright 2009-2013, Skyline Consulting and D. Rodenbaugh
+/*  Copyright 2009-2015, Skyline Consulting and D. Rodenbaugh
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License, version 2 or later, as
@@ -27,10 +27,10 @@
 */
 
 // Do not allow direct loading of this file.
-if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) ) 
+if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.4.1' );
+define( 'WPBDP_VERSION', '3.5' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -44,16 +44,19 @@ require_once( WPBDP_PATH . 'core/api.php' );
 require_once( WPBDP_PATH . 'core/compatibility/deprecated.php' );
 require_once( WPBDP_PATH . 'core/utils.php' );
 require_once( WPBDP_PATH . 'admin/tracking.php' );
-require_once( WPBDP_PATH . 'admin/wpbdp-admin.class.php' );
-require_once( WPBDP_PATH . 'core/wpbdp-settings.class.php' );
+require_once( WPBDP_PATH . 'admin/class-admin.php' );
+require_once( WPBDP_PATH . 'core/class-settings.php' );
 require_once( WPBDP_PATH . 'core/form-fields.php' );
 require_once( WPBDP_PATH . 'core/payment.php' );
 include_once( WPBDP_PATH . 'core/gateways-googlewallet.php' );
 require_once( WPBDP_PATH . 'core/listings.php' );
+require_once( WPBDP_PATH . 'core/templates-generic.php' );
+require_once( WPBDP_PATH . 'core/templates-listings.php' );
 require_once( WPBDP_PATH . 'core/templates-ui.php' );
 require_once( WPBDP_PATH . 'core/installer.php' );
 require_once( WPBDP_PATH . 'core/views.php' );
 require_once( WPBDP_PATH . 'core/widgets.php' );
+require_once( WPBDP_PATH . 'core/licensing.php' );
 
 
 global $wpbdp;
@@ -79,12 +82,14 @@ class WPBDP_Plugin {
         $this->payments = $noop;
         $this->listings = $noop;
 
+        $this->licensing = new WPBDP_Licensing();
+
         add_action( 'plugins_loaded', array( &$this, 'load_i18n' ) );
         add_action( 'init', array( &$this, 'init' ) );
         add_action( 'widgets_init', array( &$this, '_register_widgets' ) );
 
         // For testing the expiration routine only.
-        // add_action('init', create_function('', 'do_action("wpbdp_listings_expiration_check");'), 20); 
+        // add_action('init', create_function('', 'do_action("wpbdp_listings_expiration_check");'), 20);
     }
 
     function load_i18n() {
@@ -149,7 +154,7 @@ class WPBDP_Plugin {
         add_action( 'wp', array( &$this, '_jetpack_compat' ), 11, 1 );
         add_action( 'wp_head', array( &$this, '_handle_broken_plugin_filters' ), 0 );
 
-        add_filter( 'wp_title', array( &$this, '_meta_title' ), 10, 3 );        
+        add_filter( 'wp_title', array( &$this, '_meta_title' ), 10, 3 );
 
         add_action( 'wp_head', array( &$this, '_rss_feed' ) );
         add_action('wp_footer', array( &$this, '_credits_footer'));
@@ -252,11 +257,11 @@ class WPBDP_Plugin {
         global $wpdb;
 
         if (!is_admin() && isset($query->query_vars['post_type']) && $query->query_vars['post_type'] == WPBDP_POST_TYPE) {
-            $is_sticky_query = $wpdb->prepare("(SELECT 1 FROM {$wpdb->postmeta} WHERE {$wpdb->postmeta}.post_id = {$wpdb->posts}.ID AND {$wpdb->postmeta}.meta_key = %s AND {$wpdb->postmeta}.meta_value = %s) AS wpbdp_is_sticky",
+            $is_sticky_query = $wpdb->prepare("(SELECT 1 FROM {$wpdb->postmeta} WHERE {$wpdb->postmeta}.post_id = {$wpdb->posts}.ID AND {$wpdb->postmeta}.meta_key = %s AND {$wpdb->postmeta}.meta_value = %s LIMIT 1 ) AS wpbdp_is_sticky",
                                                '_wpbdp[sticky]', 'sticky');
 
             if ( 'paid' == wpbdp_get_option( 'listings-order-by' ) ) {
-                $is_paid_query = "(SELECT 1 FROM {$wpdb->prefix}wpbdp_payments pp WHERE pp.listing_id = {$wpdb->posts}.ID AND pp.amount > 0 ) AS wpbdp_is_paid";
+                $is_paid_query = "(SELECT 1 FROM {$wpdb->prefix}wpbdp_payments pp WHERE pp.listing_id = {$wpdb->posts}.ID AND pp.amount > 0 LIMIT 1 ) AS wpbdp_is_paid";
                 $fields = $fields . ', ' . $is_sticky_query . ', ' . $is_paid_query;
             } else {
                 $fields = $fields . ', ' . $is_sticky_query;
@@ -293,14 +298,16 @@ class WPBDP_Plugin {
 
             $page_link = wpbdp_get_page_link('main');
             $rewrite_base = str_replace('index.php/', '', rtrim(str_replace(home_url() . '/', '', $page_link), '/'));
-            
+
             $rules['(' . $rewrite_base . ')/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&paged=$matches[2]';
             $rules['(' . $rewrite_base . ')/([0-9]{1,})/?(.*)/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
-            
+
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]';
+
+            $rules = apply_filters( 'wpbdp_rewrite_rules', $rules );
         }
 
         return $rules;
@@ -313,6 +320,7 @@ class WPBDP_Plugin {
 
     public function _wp_loaded() {
         if ($rules = get_option( 'rewrite_rules' )) {
+//            wpbdp_debug_e( $this->get_rewrite_rules() );
             foreach ($this->get_rewrite_rules() as $k => $v) {
                 if (!isset($rules[$k]) || $rules[$k] != $v) {
                     global $wp_rewrite;
@@ -330,6 +338,7 @@ class WPBDP_Plugin {
         array_push($vars, 'category');
         array_push($vars, 'action'); // TODO: are we really using this var?
         array_push( $vars, 'wpbdpx' );
+        array_push( $vars, 'region' );
 
         return $vars;
     }
@@ -358,7 +367,7 @@ class WPBDP_Plugin {
         if ( $wp_query->get( 'wpbdpx' ) ) {
             // Handle some special wpbdpx actions.
             $wpbdpx = $wp_query->get( 'wpbdpx' );
-            
+
             if ( isset( $this->{$wpbdpx} ) && method_exists( $this->{$wpbdpx}, 'process_request' ) ) {
                 $this->{$wpbdpx}->process_request();
                 exit();
@@ -397,7 +406,7 @@ class WPBDP_Plugin {
 
                 wp_redirect( add_query_arg('id', get_query_var('p'), $url) ); // XXX
             }
-            
+
             exit;
         }
 
@@ -419,7 +428,7 @@ class WPBDP_Plugin {
                 exit;
             }
         }
-        
+
     }
 
     public function plugin_activation() {
@@ -445,7 +454,7 @@ class WPBDP_Plugin {
 
         if ( isset( $_REQUEST['state_id'] ) ) {
             require_once( WPBDP_PATH . 'core/view-submit-listing.php' );
-    
+
             $state_id = trim( $_REQUEST['state_id'] );
             $state = WPBDP_Listing_Submit_State::get( $state_id );
 
@@ -668,10 +677,10 @@ class WPBDP_Plugin {
         if ( wpbdp_get_option( 'recaptcha-for-comments' ) ) {
             add_filter( 'comment_form_field_comment', array( &$this, 'recaptcha_in_comments' ) );
             add_action( 'preprocess_comment', array( &$this, 'check_comment_recaptcha' ), 0 );
-                
+
                 // add_action('wp_head', array(&$this, 'saved_comment'), 0);
             add_action( 'comment_post_redirect', array( &$this, 'comment_relative_redirect' ), 0, 2 );
-        }        
+        }
     }
 
     public function is_debug_on() {
@@ -679,6 +688,13 @@ class WPBDP_Plugin {
     }
 
     public function debug_on() {
+        global $wpdb;
+
+        // Set MySQL strict mode.
+        //$wpdb->show_errors();
+        //$wpdb->query( "SET @@sql_mode = 'TRADITIONAL'" );
+
+        // Enable BD debugging.
         WPBDP_Debugging::debug_on();
     }
 
@@ -827,7 +843,7 @@ class WPBDP_Plugin {
     /* theme filters */
     public function _comments_template($template) {
         // disable comments in WPBDP pages or if comments are disabled for listings
-        if ( (is_single() && get_post_type() == WPBDP_POST_TYPE && !$this->settings->get('show-comment-form')) || 
+        if ( (is_single() && get_post_type() == WPBDP_POST_TYPE && !$this->settings->get('show-comment-form')) ||
               (get_post_type() == 'page' && get_the_ID() == wpbdp_get_page_id('main') )  ) {
             return WPBDP_TEMPLATES_PATH . '/empty-template.php';
         }
@@ -847,7 +863,7 @@ class WPBDP_Plugin {
         if (is_single() && get_post_type() == WPBDP_POST_TYPE) {
             return wpbdp_locate_template(array('businessdirectory-single', 'wpbusdirman-single'));
         }
-        
+
         return $template;
     }
 
@@ -955,7 +971,7 @@ class WPBDP_Plugin {
         wp_enqueue_script( 'wpbdp-js' );
 
         if ( wpbdp_get_option( 'payments-on') && wpbdp_get_option( 'googlewallet' ) ) {
-            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet' . ( $this->is_debug_on() ? '.min' : '' ) .  '.js', array( 'wpbdp-js' ) );
+            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet' . ( ! $this->is_debug_on() ? '.min' : '' ) .  '.js', array( 'wpbdp-js' ) );
         }
     }
 
@@ -1016,7 +1032,7 @@ class WPBDP_Plugin {
             remove_action( 'wp_insert_post', 'relevanssi_insert_edit', 99, 1 );
             remove_action( 'delete_attachment', 'relevanssi_delete' );
             remove_action( 'add_attachment', 'relevanssi_publish' );
-            remove_action( 'edit_attachment', 'relevanssi_edit' );  
+            remove_action( 'edit_attachment', 'relevanssi_edit' );
         }
 
         $bad_filters = array( 'get_the_excerpt' => array(), 'the_excerpt' => array(), 'the_content' => array() );
@@ -1028,7 +1044,7 @@ class WPBDP_Plugin {
             $bad_filters['the_content'][] = array( 'addthis_display_social_widget', 15 );
         }
 
-        // Jamie Social Icons - http://wordpress.org/extend/plugins/jamie-social-icons/ 
+        // Jamie Social Icons - http://wordpress.org/extend/plugins/jamie-social-icons/
         if ( function_exists( 'jamiesocial' ) ) {
             $bad_filters['the_content'][] = 'add_post_topbot_content';
             $bad_filters['the_content'][] = 'add_post_bot_content';
@@ -1059,7 +1075,7 @@ class WPBDP_Plugin {
         global $QData;
         if ( isset( $QData ) ) {
             $bad_filters['the_content'][] = 'process_content';
-        }        
+        }
 
         foreach ( $bad_filters as $filter => &$callbacks ) {
             foreach ( $callbacks as &$callback_info ) {
@@ -1158,7 +1174,7 @@ class WPBDP_Plugin {
 
                     $title = $wpseo_front->get_content_title( get_post( $listing_id ) );
                     $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );
-                    
+
                     return $title;
                     break;
                 } else {
@@ -1204,12 +1220,12 @@ class WPBDP_Plugin {
                     $term = get_term_by('slug', get_query_var('tag'), WPBDP_TAGS_TAX);
                 } else {
                     $term = get_term_by('slug', get_query_var('category'), WPBDP_CATEGORY_TAX);
-                    if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), WPBDP_CATEGORY_TAX);                    
+                    if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), WPBDP_CATEGORY_TAX);
                 }
 
                 if ( $term ) {
                     $metadesc = method_exists( 'WPSEO_Taxonomy_Meta', 'get_term_meta' ) ?
-                                WPSEO_Taxonomy_Meta::get_term_meta( $term, $term->taxonomy, 'desc' ) : 
+                                WPSEO_Taxonomy_Meta::get_term_meta( $term, $term->taxonomy, 'desc' ) :
                                 wpseo_get_term_meta( $term, $term->taxonomy, 'desc' );
                     if ( !$metadesc && isset( $wpseo_front->options['metadesc-tax-' . $term->taxonomy] ) )
                         $metadesc = wpseo_replace_vars( $wpseo_front->options['metadesc-tax-' . $term->taxonomy], (array) $term );
@@ -1242,7 +1258,7 @@ class WPBDP_Plugin {
             return;
 
         if ( $action == 'showlisting' ) {
-            $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));            
+            $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
             $link = get_permalink( $listing_id );
         } else {
             $link = $_SERVER['REQUEST_URI'];
@@ -1255,10 +1271,13 @@ class WPBDP_Plugin {
         $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
         $listing = WPBDP_Listing::get( $listing_id );
 
+        if ( ! $listing )
+            return;
+
         echo '<meta property="og:type" content="website" />';
         echo '<meta property="og:title" content="' . esc_attr( $listing->get_title() ) . '" />';
         echo '<meta property="og:url" content="' . esc_url( $listing->get_permalink() ) . '" />';
-        echo '<meta property="og:description" content="" />';
+        echo '<meta property="og:description" content="' . esc_attr( $listing->get_field_value( 'excerpt' ) ) . '" />';
 
         if ( $thumbnail_id = $listing->get_thumbnail_id() ) {
             if ( $img = wp_get_attachment_image_src( $thumbnail_id, 'wpbdp-large' ) )
@@ -1287,7 +1306,7 @@ class WPBDP_Plugin {
         }
 
         echo sprintf( '<script type="text/javascript">window.parent.WPBDP.fileUpload.resizeIFrame(%d);</script>', $_REQUEST['field_id'] );
-        
+
         exit;
     }
 
@@ -1331,11 +1350,8 @@ class WPBDP_Plugin {
 
             $html .= '<div id="wpbdp-comment-recaptcha">';
         } else {
-            if ( !function_exists( 'recaptcha_get_html' ) )
-                require_once( WPBDP_PATH . 'vendors/recaptcha/recaptchalib.php' );
-
             $html .= '<div id="wpbdp-comment-recaptcha">';
-            $html .= recaptcha_get_html( wpbdp_get_option( 'recaptcha-public-key' ) );
+            $html .= wpbdp_recaptcha();
         }
 
         $error = '';
@@ -1348,27 +1364,16 @@ class WPBDP_Plugin {
         $html .= '</div>';
 
         if ( $error )
-            $html .= sprintf( '<p class="wpbdp-recaptcha-error">%s</p>', $error );        
+            $html .= sprintf( '<p class="wpbdp-recaptcha-error">%s</p>', $error );
 
         return $html;
     }
-    
+
     public function check_comment_recaptcha( $comment_data ) {
-        if ( !isset( $_POST['recaptcha_challenge_field'] ) )
+        if ( ! wpbdp_get_option( 'recaptcha-for-comments' ) )
             return $comment_data;
 
-        $private_key = wpbdp_get_option( 'recaptcha-private-key' );
-
-        if ( !$private_key )
-            return $comment_data;
-
-        if ( !function_exists( 'recaptcha_get_html' ) )
-            require_once( WPBDP_PATH . 'vendors/recaptcha/recaptchalib.php' );
-
-        $response = recaptcha_check_answer( $private_key, $_SERVER['REMOTE_ADDR'], $_POST['recaptcha_challenge_field'], $_POST['recaptcha_response_field'] );
-        
-        if ( !$response->is_valid ) {
-            $this->_comment_recaptcha_error = $response->error;
+        if ( ! wpbdp_recaptcha_check_answer( $this->_comment_recaptcha_error ) ) {
             add_filter( 'pre_comment_approved', create_function( '$a', 'return \'spam\';' ) );
         }
 

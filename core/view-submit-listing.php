@@ -171,8 +171,9 @@ class WPBDP_Submit_Listing_Page extends WPBDP_View {
     protected function step_fee_selection() {
         global $wpbdp;
 
-        if ( ! $this->state->categories )
+        if ( ! $this->state->categories ) {
             die();
+        }
 
         $fee_selection = $this->setup_fee_selection();
 
@@ -266,16 +267,8 @@ class WPBDP_Submit_Listing_Page extends WPBDP_View {
             }
 
             if ( wpbdp_get_option( 'recaptcha-for-submits' ) ) {
-                if ( $private_key = wpbdp_get_option( 'recaptcha-private-key' ) ) {
-                    if ( isset( $_POST['recaptcha_challenge_field'] ) ) {
-                        if ( !function_exists( 'recaptcha_get_html' ) )
-                            require_once( WPBDP_PATH . 'vendors/recaptcha/recaptchalib.php' );
-
-                        $resp = recaptcha_check_answer( $private_key, $_SERVER['REMOTE_ADDR'], $_POST['recaptcha_challenge_field'], $_POST['recaptcha_response_field'] );
-                        if (!$resp->is_valid)
-                            $validation_errors[] = _x( "The reCAPTCHA wasn't entered correctly.", 'templates', 'WPBDM' );
-                    }
-                }
+                if ( ! wpbdp_recaptcha_check_answer() )
+                    $validation_errors[] = _x( "The reCAPTCHA wasn't entered correctly.", 'templates', 'WPBDM' );
             }
 
             if ( !$validation_errors ) {
@@ -315,14 +308,9 @@ class WPBDP_Submit_Listing_Page extends WPBDP_View {
 
         $recaptcha = '';
         if ( wpbdp_get_option('recaptcha-for-submits') ) {
-            if ( $public_key = wpbdp_get_option( 'recaptcha-public-key' ) ) {
-                if ( !function_exists( 'recaptcha_get_html' ) )
-                    require_once( WPBDP_PATH . 'vendors/recaptcha/recaptchalib.php' );
-                
-                $recaptcha = recaptcha_get_html( $public_key );
-            }
+            $recaptcha = wpbdp_recaptcha();
         }
-        
+
         return $this->render( 'listing-fields',
                               array(
                                     'fields' => $fields,
@@ -375,7 +363,6 @@ class WPBDP_Submit_Listing_Page extends WPBDP_View {
             $this->state->advance();
             return $this->dispatch();
         }
-
 
         $extra = wpbdp_capture_action_array( 'wpbdp_listing_form_extra_sections', array( &$this->state ) );
         $this->state->save(); // Save state in case extra sections modified it.
@@ -517,7 +504,7 @@ class WPBDP_Listing_Submit_State {
 
             $this->listing_id = $listing_id;
 
-            $categories = $listing->get_categories();
+            $categories = $listing->get_categories( 'all' );
             foreach ( $categories as &$category )
                 $this->categories[ $category->id ] = $category->fee_id;
 
@@ -566,7 +553,7 @@ class WPBDP_Listing_Submit_State {
         $this->id = $this->id ? $this->id : md5( microtime() . rand() . wp_salt() );
         $data = array( 'id' => $this->id,
                        'state' => serialize( (array) $this ),
-                       'updated' => current_time( 'mysql' ) );
+                       'updated_on' => current_time( 'mysql' ) );
         $wpdb->replace( $wpdb->prefix . 'wpbdp_submit_state', $data );
     }
 

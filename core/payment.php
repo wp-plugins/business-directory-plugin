@@ -216,7 +216,10 @@ class WPBDP_PaymentsAPI {
         $this->gateways = array();
 
         do_action_ref_array( 'wpbdp_register_gateways', array( &$this ) );
-        add_action( 'wpbdp_register_settings', array( &$this, 'register_gateway_settings' ) );        
+        add_action( 'wpbdp_register_settings', array( &$this, 'register_gateway_settings' ) );
+
+        add_action( 'WPBDP_Payment::set_payment_method', array( &$this, 'gateway_payment_setup' ), 10, 2 );
+//        add_action( 'WPBDP_Payment::before_save', array( &$this, 'gateway_payment_save' ) );
     }
 
     public function register_gateway($id, $classorinstance ) {
@@ -295,7 +298,7 @@ class WPBDP_PaymentsAPI {
             if ( $gateway_errors ) {
                 $gateway_messages = rtrim('&#149; ' . implode(' &#149; ', $gateway_errors), '.');
                 $errors[] = sprintf(_x('The <b>%s</b> gateway is active but not properly configured. The gateway won\'t be available until the following problems are fixed: <b>%s</b>. <br/> Check the <a href="%s">payment settings</a>.', 'payments-api', 'WPBDM'),
-                                        $gateway->name,
+                                        $gateway->get_name(),
                                         $gateway_messages,
                                         admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment') );
             } else {
@@ -313,6 +316,11 @@ class WPBDP_PaymentsAPI {
 
             if ( wpbdp_get_option( 'listing-renewal-auto' ) && ! $this->check_capability( 'recurring' ) ) {
                 $errors[] = __( 'You have recurring renewal of listing fees enabled but the payment gateways installed don\'t support recurring payments. Until a gateway that supports recurring payments (such as PayPal) is enabled automatic renewals will be disabled.', 'WPBDM' );
+            }
+
+            if ( wpbdp_get_option( 'listing-renewal-auto' ) && $this->has_gateway( 'googlewallet' )
+                 && wpbdp_get_option('googlewallet' ) && isset( $_GET['page'] ) && 'wpbdp_admin_fees' == $_GET['page'] ) {
+                $errors[] = __( 'Due to Google Wallet limitations only monthly (30 days) recurring fees are supported by the gateway. All other fees will be charged as non-recurring.', 'WPBDM' );
             }
         }
 
@@ -450,19 +458,28 @@ class WPBDP_PaymentsAPI {
     public function process_request() {
         $action = isset( $_GET['action'] ) ? trim( $_GET['action'] ) : '';
         $payment = isset( $_GET['payment_id'] ) ? WPBDP_Payment::get( intval( $_GET['payment_id'] ) ) : null;
+        $gid = isset( $_GET['gid'] ) ? trim( $_GET['gid'] ) : '';
 
-        if ( ! in_array( $action, array( 'process', 'notify', 'return', 'cancel' ) ) || ! $payment )
+        if ( ! in_array( $action, array( 'postback', 'process', 'notify', 'return', 'cancel' ) ) || ( ! $payment && ! $gid ) )
             return;
 
         unset( $_GET['action'] );
-        unset( $_GET['payment_id'] );
 
-        $gateway_id = $payment->get_gateway();
+        if ( $payment )
+            unset( $_GET['payment_id'] );
+
+        if ( $gid )
+            unset( $_GET['gid'] );
+
+        $gateway_id = $payment ? $payment->get_gateway() : $gid;
 
         if ( ! $gateway_id || ! isset( $this->gateways[ $gateway_id ] )  )
             return;
 
-        $this->gateways[ $gateway_id ]->process( $payment, $action );
+        if ( ! $payment )
+            $this->gateways[ $gateway_id ]->process_generic( $action );
+        else
+            $this->gateways[ $gateway_id ]->process( $payment, $action );
     }
 
     public function render_unsubscribe_integration( &$category, &$listing ) {
@@ -471,10 +488,17 @@ class WPBDP_PaymentsAPI {
         if ( ! $category || ! $listing )
             return;
 
-        if ( ! $this->gateways['paypal'] )
-            return;
+        $payment = WPBDP_Payment::get( $category->payment_id );
 
-        return $this->gateways['paypal']->render_unsubscribe_integration( $category, $listing );
+        if ( ! $payment )
+            return '';
+
+        $gateway = $payment->get_gateway();
+
+        if ( ! isset( $this->gateways[ $gateway ] ) )
+            return '';
+
+        return $this->gateways[ $gateway ]->render_unsubscribe_integration( $category, $listing );
     }
 
     /**
@@ -571,7 +595,18 @@ class WPBDP_PaymentsAPI {
             $html .= '<p>' . $opts['return_link'] . '</p>';
 
         return $html;
-    }    
+    }
+
+    /**
+     * @since 3.4.2
+     */
+    public function gateway_payment_setup( &$payment, $method_id = '' ) {
+        if ( ! $method_id || ! isset( $this->gateways[ $method_id ] ) )
+            return;
+
+        $gateway = $this->gateways[ $method_id ];
+        $gateway->setup_payment( $payment );
+    }
 
 }
 
