@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.5
+ * Version: 3.5.1
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -30,7 +30,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.5' );
+define( 'WPBDP_VERSION', '3.5.1' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -69,7 +69,7 @@ class WPBDP_Plugin {
         register_deactivation_hook( __FILE__, array( &$this, 'plugin_deactivation' ) );
 
         // Enable debugging if needed.
-        if ( defined( 'WP_DEBUG' ) && true == WP_DEBUG )
+        if ( defined( 'WPBDP_DEBUG' ) && true == WPBDP_DEBUG )
             $this->debug_on();
 
         // Load dummy objects in case plugins try to do something at an early stage.
@@ -927,6 +927,17 @@ class WPBDP_Plugin {
         wp_enqueue_style( 'wpbdp-dnd-upload' );
         wp_enqueue_script( 'wpbdp-dnd-upload' );
 
+        if ( wpbdp_get_option( 'use-thickbox' ) ) {
+            add_thickbox();
+        }
+
+        wp_enqueue_style( 'wpbdp-base-css' );
+        wp_enqueue_script( 'wpbdp-js' );
+
+        if ( wpbdp_get_option( 'payments-on') && wpbdp_get_option( 'googlewallet' ) ) {
+            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet' . ( ! $this->is_debug_on() ? '.min' : '' ) .  '.js', array( 'wpbdp-js' ) );
+        }
+
         do_action( 'wpbdp_enqueue_scripts' );
 
         // enable legacy css (should be removed in a future release) XXX
@@ -963,16 +974,6 @@ class WPBDP_Plugin {
             }
         }
 
-        if ( wpbdp_get_option( 'use-thickbox' ) ) {
-            add_thickbox();
-        }
-
-        wp_enqueue_style( 'wpbdp-base-css' );
-        wp_enqueue_script( 'wpbdp-js' );
-
-        if ( wpbdp_get_option( 'payments-on') && wpbdp_get_option( 'googlewallet' ) ) {
-            wp_enqueue_script( 'wpbdp-googlewallet', WPBDP_URL . 'core/js/googlewallet' . ( ! $this->is_debug_on() ? '.min' : '' ) .  '.js', array( 'wpbdp-js' ) );
-        }
     }
 
     /*
