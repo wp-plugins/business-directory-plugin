@@ -217,7 +217,7 @@ class WPBDP_Listing {
 
         $current_ids = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT category_id FROM {$wpdb->prefix}wpbdp_listing_fees WHERE listing_id = %d AND (expires_on >= %s OR expires_on IS NULL)",
                                                    $this->id,
-                                                   current_time( 'mysql' ) ) );    
+                                                   current_time( 'mysql' ) ) );
         $expired_ids = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT category_id FROM {$wpdb->prefix}wpbdp_listing_fees WHERE listing_id = %d AND expires_on IS NOT NULL AND expires_on < %s",
                                                    $this->id,
                                                    current_time( 'mysql' ) ) );
@@ -258,11 +258,11 @@ class WPBDP_Listing {
         foreach ( $category_ids as $category_id ) {
             if ( $category_info = get_term( intval( $category_id ), WPBDP_CATEGORY_TAX ) ) {
                 $category = new StdClass();
-                $category->id = $category_info->term_id;
+                $category->id = intval( $category_info->term_id );
                 $category->name = $category_info->name;
                 $category->slug = $category_info->slug;
-                $category->term_id = $category_info->term_id;
-                $category->term_taxonomy_id = $category_info->term_taxonomy_id;
+                $category->term_id = intval( $category_info->term_id );
+                $category->term_taxonomy_id = intval( $category_info->term_taxonomy_id );
                 $category->status = in_array( $category_id, $pending_ids, true ) ? 'pending' : ( in_array( $category_id, $expired_ids, true ) ? 'expired' : 'ok' );
 
                 switch ( $category->status ) {
@@ -344,7 +344,7 @@ class WPBDP_Listing {
         $this->fix_categories();
     }
 
-    public function fix_categories() {
+    public function fix_categories( $charge = false ) {
         global $wpdb;
 
         // Delete fee information for categories that no longer exist.
@@ -360,14 +360,23 @@ class WPBDP_Listing {
             $wpdb->query( $wpdb->prepare( "DELETE lf FROM {$wpdb->prefix}wpbdp_listing_fees lf WHERE lf.listing_id = %d AND lf.category_id IN ({$cats})", $this->id ) );
         }
 
-        // Assign a default fee for categories without a fee.        
+        // Assign a default fee for categories without a fee.
         foreach ( $terms as $category_id ) {
             $category_info = $this->get_category_info( $category_id );
 
             if ( $category_info && 'pending' == $category_info->status ) {
                 $this->add_category( $category_id, $category_info->fee, false, null, true );
             } elseif ( ! $category_info ) {
-                $this->add_category( $category_id, 0 );
+                $fee_options = wpbdp_get_fees_for_category( $category_id );
+
+                if ( $charge ) {
+                    $payment = new WPBDP_Payment( array( 'listing_id' => $this->id ) );
+                    $payment->add_category_fee_item( $category_id, $fee_options[0] );
+                    $payment->set_status( WPBDP_Payment::STATUS_COMPLETED );
+                    $payment->save();
+                } else {
+                    $this->add_category( $category_id, $fee_options[0] );
+                }
             }
         }
     }
@@ -431,6 +440,8 @@ class WPBDP_Listing {
     public function save() {
         if ( $this->new )
             do_action_ref_array( 'WPBDP_Listing::listing_created', array( &$this ) );
+        else
+            do_action_ref_array( 'WPBDP_Listing::listing_edited', array( &$this ) );
 
         $this->new = false;
         do_action_ref_array( 'WPBDP_Listing::listing_saved', array( &$this ) );

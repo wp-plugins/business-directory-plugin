@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.5.1
+ * Version: 3.5.2
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -30,7 +30,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.5.1' );
+define( 'WPBDP_VERSION', '3.5.2' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -57,6 +57,7 @@ require_once( WPBDP_PATH . 'core/installer.php' );
 require_once( WPBDP_PATH . 'core/views.php' );
 require_once( WPBDP_PATH . 'core/widgets.php' );
 require_once( WPBDP_PATH . 'core/licensing.php' );
+require_once( WPBDP_PATH . 'core/seo.php' );
 
 
 global $wpbdp;
@@ -301,11 +302,11 @@ class WPBDP_Plugin {
 
             $rules['(' . $rewrite_base . ')/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&paged=$matches[2]';
             $rules['(' . $rewrite_base . ')/([0-9]{1,})/?(.*)/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
-
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]';
+//            $rules['(' . $rewrite_base . ')/(.*)/?$'] = 'index.php?page_id=' . $page_id . '&listing=$matches[2]';
 
             $rules = apply_filters( 'wpbdp_rewrite_rules', $rules );
         }
@@ -320,7 +321,6 @@ class WPBDP_Plugin {
 
     public function _wp_loaded() {
         if ($rules = get_option( 'rewrite_rules' )) {
-//            wpbdp_debug_e( $this->get_rewrite_rules() );
             foreach ($this->get_rewrite_rules() as $k => $v) {
                 if (!isset($rules[$k]) || $rules[$k] != $v) {
                     global $wp_rewrite;
@@ -1276,9 +1276,9 @@ class WPBDP_Plugin {
             return;
 
         echo '<meta property="og:type" content="website" />';
-        echo '<meta property="og:title" content="' . esc_attr( $listing->get_title() ) . '" />';
+        echo '<meta property="og:title" content="' . esc_attr( WPBDP_SEO::listing_title( $listing_id ) ) . '" />';
         echo '<meta property="og:url" content="' . esc_url( $listing->get_permalink() ) . '" />';
-        echo '<meta property="og:description" content="' . esc_attr( $listing->get_field_value( 'excerpt' ) ) . '" />';
+        echo '<meta property="og:description" content="' . esc_attr( WPBDP_SEO::listing_og_description( $listing_id ) ) . '" />';
 
         if ( $thumbnail_id = $listing->get_thumbnail_id() ) {
             if ( $img = wp_get_attachment_image_src( $thumbnail_id, 'wpbdp-large' ) )
@@ -1547,3 +1547,4 @@ JS;
 }
 
 $wpbdp = new WPBDP_Plugin();
+

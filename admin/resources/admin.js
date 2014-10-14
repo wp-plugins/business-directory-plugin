@@ -165,8 +165,9 @@ jQuery(document).ready(function($){
      * Admin bulk actions
      */
 
-    $('input[id="doaction"]').click(function(e) {
-        var $selected_option = $('select[name="action"] option:selected');
+    $('input#doaction, input#doaction2').click(function(e) {
+        var action_name = ( 'doaction' == $(this).attr('id') ) ? 'action' : 'action2';
+        var $selected_option = $('select[name="' + action_name + '"] option:selected');
         var action_val = $selected_option.val();
 
         if (action_val.split('-')[0] == 'listing') {
@@ -468,6 +469,31 @@ WPBDP_Admin.ProgressBar = function($item, settings) {
 })(jQuery);
 /* }} */
 
+/* {{ Uninstall. */
+(function($) {
+    var u = WPBDP_Admin.uninstall = {
+        init: function() {
+            $( 'form#wpbdp-uninstall-capture-form input[name="uninstall[reason_id]"]' ).change(function(e) {
+                var val = $(this).val();
+
+                if ( '0' == val ) {
+                    $( 'form#wpbdp-uninstall-capture-form textarea[name="uninstall[reason_text]"]' ).fadeIn();
+                } else {
+                    $( 'form#wpbdp-uninstall-capture-form textarea[name="uninstall[reason_text]"]' ).fadeOut( 'fast', function() {
+                        $(this).val('');
+                    } );
+                }
+            });
+        }
+    };
+
+    $(document).ready(function(){
+        if ( $( 'body.directory-admin_page_wpbdp_uninstall' ).length > 0 )
+            u.init();
+    });
+})(jQuery);
+/* }} */
+
 // {{ Settings - License Activation.
 (function($) {
     var l = WPBDP_Admin.licensing = {
@@ -515,6 +541,9 @@ WPBDP_Admin.ProgressBar = function($item, settings) {
                         .removeClass('ok')
                         .addClass('error')
                         .show();
+
+                    if ( 'deactivate' == action )
+                        $( 'input[type="text"]#license-key-' + module ).removeAttr('readonly');
                 }
             }, 'json' );
         }

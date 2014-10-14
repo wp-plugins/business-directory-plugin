@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress business directory,wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.6
 Tested up to: 4.0
-Last Updated: 2014-Sep-10
-Stable tag: tags/3.5.1
+Last Updated: 2014-Oct-14
+Stable tag: tags/3.5.2
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -108,6 +108,19 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+
+= Version 3.5.2 =
+* Fix inexact searches for text fields. 
+* Strip slashes from search terms before performing the search. 
+* Fix display of search terms containing apostrophes. 
+* Add setting for notifying admins of listing edits. 
+* Do not send expiration notices for listing fees that auto-renew. 
+* Notify users via e-mail after auto-renewal of listing fees. 
+* Add support for Lightbox gallery mode. 
+* Add form to capture uninstall reasons. 
+* Listing cost now includes fees assigned using the backend. 
+* Support Yoast's OpenGraph tags. 
+* Minor WordPress API changes for 3.6 compatibility. 
 
 = Version 3.5.1 =
 * Fix loading of custom CSS styles. 

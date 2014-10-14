@@ -258,7 +258,7 @@ class WPBDP_Admin_Listings {
             if ( ! $listing )
                 return;
 
-            $listing->fix_categories();
+            $listing->fix_categories( true  );
 
             // Save custom fields.
             //if ( isset( $_POST['wpbdp-listing-fields-nonce'] ) && wp_verify_nonce( $_POST['wpbdp-listing-fields-nonce'], plugin_basename( __FILE__ ) ) )
@@ -308,7 +308,7 @@ class WPBDP_Admin_Listings {
                         echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
                                     'action', 'listing-' . $action, add_query_arg('wpbdmaction', $action), $text);
                         echo sprintf('jQuery(\'select[name="%s"]\').append(\'<option value="%s" data-uri="%s">%s</option>\');',
-                                    'action2', 'listing-' . $action, '', $text);
+                                    'action2', 'listing-' . $action, add_query_arg('wpbdmaction', $action), $text);
                     }
 
                     echo '</script>';
