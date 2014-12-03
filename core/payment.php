@@ -29,6 +29,39 @@ class WPBDP_FeesAPI {
         $fee->extra_data = unserialize( $fee->extra_data );
     }
 
+    public function _sort_fees( &$fees ) {
+        $order = wpbdp_get_option( 'fee-order' );
+        $res = array_merge( array(), $fees );
+
+        if ( 'custom' == $order['method'] ) {
+            usort( $res, create_function( '$a, $b', 'return $a->weight < $b->weight;' ) );
+            return $res;
+        }
+
+        $field = $order['method'];
+        $asc = ( 'asc' == $order['order'] ) ? true : false;
+
+        switch ( $field ) {
+            case 'label':
+                usort( $res, create_function( '$a, $b', 'return strnatcmp( $a->label, $b->label );' ) );
+                break;
+            case 'days':
+                usort( $res, create_function( '$a, $b', 'return ( 0 == $a->days ? 1 : ( 0 == $b->days ? -1 : $a->days > $b->days ) );' ) );
+                break;
+            case 'amount':
+            case 'images':
+                usort( $res, create_function( '$a, $b', 'return ($a->' . $field . '*100) > ($b->' . $field . '*100);' ) );
+                break;
+        }
+
+        if ( ! $asc )
+            $res = array_reverse( $res );
+
+        return $res;
+
+//        wpbdp_debug_e( $order, $res );
+    }
+
     public function get_fees_for_category($catid) {
         $fees = array();
 
@@ -64,7 +97,7 @@ class WPBDP_FeesAPI {
 
             foreach ($categories as $catid) {
                 $category_fees = $this->get_fees_for_category($catid);
-                $fees[$catid] = $category_fees;
+                $fees[$catid] = $this->_sort_fees( $category_fees );
             }
 
             return $fees;
@@ -73,6 +106,8 @@ class WPBDP_FeesAPI {
             
             foreach ($fees as &$fee)
                 $this->normalize($fee);
+
+            $fees = $this->_sort_fees( $fees );
 
             return $fees;
         }
@@ -248,7 +283,7 @@ class WPBDP_PaymentsAPI {
             return array();
 
         foreach ( $this->gateways as $gateway_id => &$gateway ) {
-            if ( wpbdp_get_option( $gateway_id ) ) {
+            if ( wpbdp_get_option( $gateway_id ) || 'dummy' == $gateway_id ) {
                 if ( 0 === count( $gateway->validate_config() ) ) {
                     if ( $capabilities ) {
                         $has_caps = true;
@@ -310,7 +345,7 @@ class WPBDP_PaymentsAPI {
             $errors[] = sprintf(_x('You have payments turned on but no gateway is active and properly configured. Go to <a href="%s">Manage Options - Payment</a> to change the payment settings. Until you change this, the directory will operate in <i>Free Mode</i>.', 'admin', 'WPBDM'),
                                 admin_url('admin.php?page=wpbdp_admin_settings&groupid=payment'));            
         } else {
-            if ( count( $this->get_available_methods() ) >= 2 && $this->has_gateway( 'payfast' ) ) {
+            if ( count( $this->get_available_methods() ) >= 2 && $this->is_available( 'payfast' ) ) {
                 $errors[] = __( 'BD detected PayFast and another gateway were enabled. This setup is not recommended due to PayFast supporting only ZAR and the other gateways not supporting this currency.', 'admin', 'WPBDM' );
             }
 
@@ -318,7 +353,7 @@ class WPBDP_PaymentsAPI {
                 $errors[] = __( 'You have recurring renewal of listing fees enabled but the payment gateways installed don\'t support recurring payments. Until a gateway that supports recurring payments (such as PayPal) is enabled automatic renewals will be disabled.', 'WPBDM' );
             }
 
-            if ( wpbdp_get_option( 'listing-renewal-auto' ) && $this->has_gateway( 'googlewallet' )
+            if ( wpbdp_get_option( 'listing-renewal-auto' ) && $this->is_available( 'googlewallet' )
                  && wpbdp_get_option('googlewallet' ) && isset( $_GET['page'] ) && 'wpbdp_admin_fees' == $_GET['page'] ) {
                 $errors[] = __( 'Due to Google Wallet limitations only monthly (30 days) recurring fees are supported by the gateway. All other fees will be charged as non-recurring.', 'WPBDM' );
             }
@@ -329,6 +364,13 @@ class WPBDP_PaymentsAPI {
 
     public function get_registered_methods() {
         return $this->gateways;
+    }
+
+    /**
+     * @since 3.5.3
+     */
+    public function is_available($gateway) {
+        return in_array( $gateway, $this->get_available_methods(), true );
     }
 
     public function has_gateway($gateway) {
@@ -588,7 +630,7 @@ class WPBDP_PaymentsAPI {
             $html .= '<p>' . _x( 'The payment has been canceled at your request.', 'payments', 'WPBDM' ) . '</p>';
         } elseif ( $payment->is_pending() && $payment->get_gateway() ) {
             $html .= $this->render_invoice( $payment );
-            $html .= $this->render_payment_method_integration( $payment );            
+            $html .= $this->render_payment_method_integration( $payment );
         }
 
         if ( ! $opts['retry_rejected'] && $opts['return_link'] )

@@ -303,10 +303,19 @@ class WPBDP_FieldTypes_Select extends WPBDP_Form_Field_Type {
             }
 
             foreach ( $options as $option => $label ) {
+                $option_data = array( 'label' => $label,
+                                      'value' => esc_attr( $option ),
+                                      'attributes' => array() );
+
+                if ( in_array( $option, $value ) )
+                    $option_data['attributes']['selected'] = 'selected';
+
+                $option_data = apply_filters( 'wpbdp_form_field_select_option', $option_data, $field );
+
                 $html .= sprintf( '<option value="%s" %s>%s</option>',
-                                  esc_attr( $option ),
-                                  in_array( $option, $value ) ? 'selected="selected"' : '',
-                                  esc_attr( $label ) );
+                                  esc_attr( $option_data['value'] ),
+                                  $this->html_attributes( $option_data['attributes'], array( 'value', 'class' ) ),
+                                  esc_attr( $option_data['label'] ) );
             }
 
             $html .= '</select>';
@@ -477,7 +486,8 @@ class WPBDP_FieldTypes_TextArea extends WPBDP_Form_Field_Type {
         $value = $field->value( $post_id );
 
         if ( $field->get_association() == 'content' && $field->data( 'allow_filters' ) ) {
-            $value = apply_filters( 'the_content', $value );
+            //$value = apply_filters( 'the_content', $value );
+            $value = do_shortcode( $value );
         } elseif ( $field->data( 'allow_html' ) ) {
             $value = nl2br( wp_kses_post( $value ) );
         } else {
@@ -522,15 +532,22 @@ class WPBDP_FieldTypes_RadioButton extends WPBDP_Form_Field_Type {
         }
 
         $html = '';
-
+        $i = 1;
         foreach ( $options as $option => $label ) {
-            $html .= sprintf( '<span style="padding-right: 10px;"><input type="radio" name="%s" class="%s" value="%s" %s />%s</span>',
+            $css_classes = array();
+            $css_classes[] = 'wpbdp-inner-radio';
+            $css_classes[] = 'wpbdp-inner-radio-' . $i;
+            $css_classes[] = 'wpbdp-inner-radio-' . WPBDP_Form_Field_Type::normalize_name( $label );
+
+            $html .= sprintf( '<span class="%s" style="padding-right: 10px;"><input type="radio" name="%s" class="%s" value="%s" %s />%s</span>',
+                              implode( ' ', $css_classes ),
                               'listingfields[' . $field->get_id() . ']',
                               $field->is_required() ? 'inradio required' : 'inradio',
                               $option,
                               $value == $option ? 'checked="checked"' : '',
                               esc_attr( $label )
                             );
+            $i++;
         }
 
         return $html;
@@ -642,13 +659,22 @@ class WPBDP_FieldTypes_Checkbox extends WPBDP_Form_Field_Type {
         }
 
         $html = '';
+        $i = 1;
         foreach ( $options as $option_key => $label ) {
-            $html .= sprintf( '<div class="wpbdmcheckboxclass"><input type="checkbox" class="%s" name="%s" value="%s" %s/> %s</div>',
+            $css_classes = array();
+            $css_classes[] = 'wpbdp-inner-checkbox';
+            $css_classes[] = 'wpbdp-inner-checkbox-' . $i;
+            $css_classes[] = 'wpbdp-inner-checkbox-' . WPBDP_Form_Field_Type::normalize_name( $label );
+
+            $html .= sprintf( '<div class="wpbdmcheckboxclass %s"><input type="checkbox" class="%s" name="%s" value="%s" %s/> %s</div>',
+                              implode( ' ', $css_classes ),
                               $field->is_required() ? 'required' : '',
                              'listingfields[' . $field->get_id() . '][]',
                               $option_key,
                               in_array( $option_key, is_array( $value ) ? $value : array( $value ) ) ? 'checked="checked"' : '',
                               esc_attr( $label ) );
+
+            $i++;
         }
 
         $html .= '<div style="clear:both;"></div>';

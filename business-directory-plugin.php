@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.5.2
+ * Version: 3.5.3dev
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -30,7 +30,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.5.2' );
+define( 'WPBDP_VERSION', '3.5.3dev' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -55,7 +55,6 @@ require_once( WPBDP_PATH . 'core/templates-listings.php' );
 require_once( WPBDP_PATH . 'core/templates-ui.php' );
 require_once( WPBDP_PATH . 'core/installer.php' );
 require_once( WPBDP_PATH . 'core/views.php' );
-require_once( WPBDP_PATH . 'core/widgets.php' );
 require_once( WPBDP_PATH . 'core/licensing.php' );
 require_once( WPBDP_PATH . 'core/seo.php' );
 
@@ -171,6 +170,7 @@ class WPBDP_Plugin {
 
         // Scripts & styles.
         add_action('wp_enqueue_scripts', array($this, '_enqueue_scripts'));
+        add_action( 'wp_enqueue_scripts', array( &$this, 'enqueue_css_override' ), 30, 0 );
 
         // Plugin modules initialization.
         $this->_init_modules();
@@ -301,12 +301,17 @@ class WPBDP_Plugin {
             $rewrite_base = str_replace('index.php/', '', rtrim(str_replace(home_url() . '/', '', $page_link), '/'));
 
             $rules['(' . $rewrite_base . ')/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&paged=$matches[2]';
-            $rules['(' . $rewrite_base . ')/([0-9]{1,})/?(.*)/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-category-slug') . '/(.+?)/?$'] = 'index.php?page_id=' . $page_id . '&category=$matches[2]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)/' . $wp_rewrite->pagination_base . '/?([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]&paged=$matches[3]';
             $rules['(' . $rewrite_base . ')/' . wpbdp_get_option('permalinks-tags-slug') . '/(.+?)$'] = 'index.php?page_id=' . $page_id . '&tag=$matches[2]';
-//            $rules['(' . $rewrite_base . ')/(.*)/?$'] = 'index.php?page_id=' . $page_id . '&listing=$matches[2]';
+
+            if ( wpbdp_get_option( 'permalinks-no-id' ) ) {
+                //$rules['(' . $rewrite_base . ')/([0-9]{1,})/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
+                $rules['(' . $rewrite_base . ')/(.*)/?$'] = 'index.php?page_id=' . $page_id . '&listing=$matches[2]';
+            } else {
+                $rules['(' . $rewrite_base . ')/([0-9]{1,})/?(.*)/?$'] = 'index.php?page_id=' . $page_id . '&id=$matches[2]';
+            }
 
             $rules = apply_filters( 'wpbdp_rewrite_rules', $rules );
         }
@@ -401,9 +406,6 @@ class WPBDP_Plugin {
             if (get_query_var('name')) {
                 wp_redirect( add_query_arg('listing', get_query_var('name'), $url) ); // XXX
             } else {
-                if ( get_query_var('preview') == true )
-                    $url = add_query_arg( 'preview', 1, $url );
-
                 wp_redirect( add_query_arg('id', get_query_var('p'), $url) ); // XXX
             }
 
@@ -411,21 +413,24 @@ class WPBDP_Plugin {
         }
 
         global $post;
-        if ( $post && ($post->ID == wpbdp_get_page_id('main')) && (get_query_var('id')) ) {
-            $id = get_query_var('id') ? get_query_var('id') : get_query_var('preview_id');
-            $listing = get_post($id);
+        if ( $post && ($post->ID == wpbdp_get_page_id('main')) && (get_query_var('id') || get_query_var('listing')) ) {
+            $id_or_slug = false;
 
-            if ( $listing && get_query_var('preview') ) {
-                if ( current_user_can('edit_posts') )
-                    return;
+            foreach ( array( 'id', 'preview_id', 'listing' ) as $x ) {
+                if ( get_query_var( $x ) ) {
+                    $id_or_slug = get_query_var( $x );
+                    break;
+                }
             }
 
-            if (!$listing || $listing->post_type != WPBDP_POST_TYPE || $listing->post_status != 'publish') {
+            $listing = wpbdp_get_post_by_id_or_slug( $id_or_slug, wpbdp_get_option( 'permalinks-no-id' ) ? 'slug' : 'id' );
+
+            if ( ! $listing || ( 'publish' != $listing->post_status && ! current_user_can( 'edit_posts' ) )  ) {
                 $this->controller->action = null;
                 status_header(404);
                 nocache_headers();
                 include( get_404_template() );
-                exit;
+                exit();
             }
         }
 
@@ -706,34 +711,47 @@ class WPBDP_Plugin {
         switch (strtolower($name)) {
             default:
                 break;
+            case 'payfast':
+            case 'payfast-payment-module':
+                return class_exists( 'WPBDP_Gateways_PayFast' );
+                break;
             case 'paypal':
-                return wpbdp_payments_api()->has_gateway('paypal');
+            case 'paypal-gateway-module':
+                return class_exists( 'WPBDP_Paypal_Module' );
                 break;
             case '2checkout':
             case 'twocheckout':
-                return wpbdp_payments_api()->has_gateway('2checkout');
+            case '2checkout-gateway-module':
+                return class_exists( 'WPBDP_2Checkout_Module' );
                 break;
             case 'googlecheckout':
                 return wpbdp_payments_api()->has_gateway('googlecheckout');
                 break;
+            case 'google-maps-module':
             case 'googlemaps':
                 return class_exists('BusinessDirectory_GoogleMapsPlugin');
                 break;
+            case 'ratings-module':
             case 'ratings':
                 return class_exists('BusinessDirectory_RatingsModule');
                 break;
+            case 'regions-module':
             case 'regions':
                 return class_exists('WPBDP_RegionsPlugin');
                 break;
+            case 'file-attachments-module':
             case 'attachments':
                 return class_exists( 'WPBDP_ListingAttachmentsModule' );
                 break;
+            case 'zip-search-module':
             case 'zipcodesearch':
                 return class_exists( 'WPBDP_ZIPCodeSearchModule' );
                 break;
+            case 'featured-levels-module':
             case 'featuredlevels':
                 return class_exists( 'WPBDP_FeaturedLevelsModule' );
                 break;
+            case 'stripe-payment-module':
             case 'stripe':
                 return class_exists( 'WPBDP_Stripe_Module' );
                 break;
@@ -791,8 +809,13 @@ class WPBDP_Plugin {
     }
 
     public function _register_widgets() {
-        register_widget('WPBDP_LatestListingsWidget');
+        include_once ( WPBDP_PATH . 'core/widget-featured-listings.php' );
+        include_once ( WPBDP_PATH . 'core/widget-latest-listings.php' );
+        include_once ( WPBDP_PATH . 'core/widget-random-listings.php' );
+        include_once ( WPBDP_PATH . 'core/widget-search.php' );
+
         register_widget('WPBDP_FeaturedListingsWidget');
+        register_widget('WPBDP_LatestListingsWidget');
         register_widget('WPBDP_RandomListingsWidget');
         register_widget('WPBDP_SearchWidget');
     }
@@ -913,6 +936,8 @@ class WPBDP_Plugin {
     public function _enqueue_scripts() {
         $only_in_plugin_pages = true;
 
+        wp_enqueue_style( 'wpbdp-widgets', WPBDP_URL . 'core/css/widgets.min.css' );
+
         if ( $only_in_plugin_pages && ! $this->is_plugin_page() )
             return;
 
@@ -943,37 +968,46 @@ class WPBDP_Plugin {
         // enable legacy css (should be removed in a future release) XXX
         if (_wpbdp_template_mode('single') == 'template' || _wpbdp_template_mode('category') == 'template' )
             wp_enqueue_style('wpbdp-legacy-css', WPBDP_URL . 'core/css/wpbdp-legacy.min.css');
+    }
 
-        $counter = 0;
-        foreach (array('wpbdp.css', 'wpbusdirman.css', 'wpbdp_custom_style.css', 'wpbdp_custom_styles.css', 'wpbdm_custom_style.css', 'wpbdm_custom_styles.css') as $stylesheet) {
-            if (file_exists( get_stylesheet_directory() . '/' . $stylesheet )) {
-                wp_enqueue_style('wpbdp-custom-css-' . $counter, get_stylesheet_directory_uri() . '/' . $stylesheet);
-                $counter++;
-            }
+    /**
+     * @since 3.5.3
+     */
+    public function enqueue_css_override() {
+        $stylesheet_dir = trailingslashit( get_stylesheet_directory() );
+        $stylesheet_dir_uri = trailingslashit( get_stylesheet_directory_uri() );
+        $template_dir = trailingslashit( get_template_directory() );
+        $template_dir_uri = trailingslashit( get_template_directory_uri() );
 
-            if (file_exists( get_stylesheet_directory() . '/css/' . $stylesheet )) {
-                wp_enqueue_style('wpbdp-custom-css-' . $counter, get_stylesheet_directory_uri() . '/css/' . $stylesheet);
-                $counter++;
-            }
+        $folders_uris = array(
+            array( trailingslashit( WP_PLUGIN_DIR ), trailingslashit( WP_PLUGIN_URL ) ),
+            array( $stylesheet_dir, $stylesheet_dir_uri ),
+            array( $stylesheet_dir . 'css/', $stylesheet_dir_uri . 'css/' )
+        );
 
-            if (get_template_directory() != get_stylesheet_directory()) {
-                if (file_exists( get_template_directory() . '/' . $stylesheet )) {
-                    wp_enqueue_style('wpbdp-custom-css-' . $counter, get_template_directory_uri() . '/' . $stylesheet);
-                    $counter++;
-                }
-
-                if (file_exists( get_template_directory() . '/css/' . $stylesheet )) {
-                    wp_enqueue_style('wpbdp-custom-css-' . $counter, get_template_directory_uri() . '/css/' . $stylesheet);
-                    $counter++;
-                }
-            }
-
-            if (file_exists(WP_PLUGIN_DIR . '/' . $stylesheet)) {
-                wp_enqueue_style('wpbdp-custom-css-' . $counter, WP_PLUGIN_URL . '/' . $stylesheet);
-                $counter++;
-            }
+        if ( $template_dir != $stylesheet_dir ) {
+            $folders_uris[] = array( $template_dir, $template_dir_uri );
+            $folders_uris[] = array( $template_dir . 'css/', $template_dir_uri . 'css/' );
         }
 
+        $filenames = array( 'wpbdp.css',
+                            'wpbusdirman.css',
+                            'wpbdp_custom_style.css',
+                            'wpbdp_custom_styles.css',
+                            'wpbdm_custom_style.css',
+                            'wpbdm_custom_styles.css' );
+
+        $n = 0;
+        foreach ( $folders_uris as $folder_uri ) {
+            list( $dir, $uri ) = $folder_uri;
+
+            foreach ( $filenames as $f ) {
+                if ( file_exists( $dir . $f ) ) {
+                    wp_enqueue_style( 'wpbdp-custom-' . $n, $uri . $f );
+                    $n++;
+                }
+            }
+        }
     }
 
     /*
@@ -982,8 +1016,12 @@ class WPBDP_Plugin {
     public function _meta_setup() {
         $action = $this->controller->get_current_action();
 
-        if ( !$action )
+        if ( ! $action )
             return;
+
+        require_once( WPBDP_PATH . 'class-page-meta.php' );
+        $this->page_meta = new WPBDP_Page_Meta( $action );
+
 
         $this->_do_wpseo = defined( 'WPSEO_VERSION' ) ? true : false;
 

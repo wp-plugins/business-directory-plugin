@@ -1,4 +1,5 @@
 <?php
+// FIXME: this class is huge.
 
 class WPBDP_Settings {
 
@@ -6,6 +7,7 @@ class WPBDP_Settings {
 
     const _EMAIL_RENEWAL_MESSAGE = "Your listing \"[listing]\" in category [category] expired on [expiration]. To renew your listing click the link below.\n[link]";
     const _EMAIL_AUTORENEWAL_MESSAGE = "Hey [author],\n\nThanks for your payment. We just renewed your listing [listing] on [date] for another period.\n\nIf you have any questions, contact us at [site].";
+    const _EMAIL_AUTORENEWAL_PENDING_MESSAGE = "Hey [author],\n\nThis is just to remind you that your listing [listing] is going to be renewed on [date] for another period.\nIf you want to review or cancel your subscriptions please visit [link].\n\nIf you have any questions, contact us at [site].";
     const _EMAIL_PENDING_RENEWAL_MESSAGE = 'Your listing "[listing]" is about to expire at [site]. You can renew it here: [link].';
 
     private $deps = array();
@@ -37,6 +39,11 @@ class WPBDP_Settings {
         $this->add_setting($s, 'permalinks-directory-slug', _x('Directory Listings Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_POST_TYPE, null, null, array($this, '_validate_listings_permalink'));
         $this->add_setting($s, 'permalinks-category-slug', _x('Categories Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_CATEGORY_TAX, _x('The slug can\'t be in use by another term. Avoid "category", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
         $this->add_setting($s, 'permalinks-tags-slug', _x('Tags Slug', 'admin settings', 'WPBDM'), 'text', WPBDP_TAGS_TAX, _x('The slug can\'t be in use by another term. Avoid "tag", for instance.', 'admin settings', 'WPBDM'), null, array($this, '_validate_term_permalink'));
+        $this->add_setting( $s,
+                            'permalinks-no-id',
+                            _x( 'Remove listing ID from directory URLs?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false );
 
         $s = $this->add_section( $g,
                                  'recaptcha',
@@ -130,6 +137,21 @@ class WPBDP_Settings {
                             true,
                             _x( 'Allows visitors to contact listing authors privately. Authors will receive the messages via email.', 'admin settings', 'WPBDM' ) );
         $this->add_setting( $s,
+                            'contact-form-require-login',
+                            _x( 'Require login for using the contact form?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false );
+        $this->register_dep( 'contact-form-require-login', 'requires-true', 'show-contact-form' );
+        $this->add_setting( $s,
+                            'contact-form-daily-limit',
+                            _x( 'Maximum number of contact form submits per day', 'admin settings', 'WPBDM' ),
+                            'text',
+                            '0',
+                            _x( 'Use this to prevent spamming of listing owners. 0 means unlimited submits per day.',
+                                'admin settings',
+                                'WPBDM') );
+        $this->register_dep( 'contact-form-daily-limit', 'requires-true', 'show-contact-form' );
+        $this->add_setting( $s,
                             'show-comment-form',
                             _x( 'Include comment form on listing pages?', 'admin settings', 'WPBDM' ),
                             'boolean',
@@ -165,6 +187,11 @@ class WPBDP_Settings {
                             '5',
                             _x( 'Configure how many days before listing expiration is the renewal e-mail sent.', 'admin settings', 'WPBDM' )
                             );
+        $this->add_setting( $s,
+                            'send-autorenewal-expiration-notice',
+                            _x( 'Send expiration notices including a cancel links to auto-renewed listings?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false );
 
         // Renewal Reminders
         $this->add_setting( $s,
@@ -308,16 +335,39 @@ class WPBDP_Settings {
         $this->add_setting( $s,
                             'renewal-pending-message',
                             _x( 'Pending expiration e-mail message', 'admin settings', 'WPBDM' ),
-                            'text',
+                            'text_template',
                             self::_EMAIL_PENDING_RENEWAL_MESSAGE,
                             '',
-                            array( 'use_textarea' => true ));
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
+                                                            'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
+                                                            'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
+                                                            'category' => _x( 'Category that is going to expire', 'settings', 'WPBDM' ),
+                                                            'link' => _x( 'Link to renewal page', 'settings', 'WPBDM' ),
+                                                            'site' => _x( 'Link to your site', 'settings', 'WPBDM' )  ) )
+                            );
         $this->add_setting( $s,
                             'listing-renewal-message', _x('Listing Renewal e-mail message', 'admin settings', 'WPBDM'),
-                            'text',
+                            'text_template',
                             self::_EMAIL_RENEWAL_MESSAGE,
-                            _x( 'You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date and [link] for the actual renewal link.', 'admin settings', 'WPBDM' ),
-                            array( 'use_textarea' => true )
+                            '',
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
+                                                            'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
+                                                            'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
+                                                            'category' => _x( 'Category that expired', 'settings', 'WPBDM' ),
+                                                            'link' => _x( 'Link to renewal page', 'settings', 'WPBDM' ),
+                                                            'site' => _x( 'Link to your site', 'settings', 'WPBDM' )  ) )
+                          );
+        $this->add_setting( $s,
+                            'listing-autorenewal-notice', _x( 'Listing auto-renewal reminder (recurring payments)', 'admin settings', 'WPBDM'),
+                            'text_template',
+                            self::_EMAIL_AUTORENEWAL_PENDING_MESSAGE,
+                            '',
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
+                                                            'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
+                                                            'date' => _x( 'Renewal date', 'settings', 'WPBDM' ),
+                                                            'category' => _x( 'Category that is going to be renewed', 'settings', 'WPBDM' ),
+                                                            'site' => _x( 'Link to your site', 'settings', 'WPBDM' ),
+                                                            'link' => _x( 'Link to manage subscriptions', 'settings', 'WPBDM' ) ) )
                           );
         $this->add_setting( $s,
                             'listing-autorenewal-message', _x('Listing Renewal e-mail message (recurring payments)', 'admin settings', 'WPBDM'),
@@ -333,19 +383,34 @@ class WPBDP_Settings {
         $this->add_setting( $s,
                             'renewal-reminder-message',
                             _x( 'Renewal reminder e-mail message', 'admin settings', 'WPBDM' ),
-                            'text',
+                            'text_template',
                             "Dear Customer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link].",
-                            _x( 'You can use the placeholders [listing] for the listing title, [category] for the category, [expiration] for the expiration date, [site] for this site\'s URL and [link] for the actual renewal link.', 'admin settings', 'WPBDM' ),
-                            array( 'use_textarea' => true )
+                            '',
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
+                                                            'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
+                                                            'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
+                                                            'category' => _x( 'Category that expired', 'settings', 'WPBDM' ),
+                                                            'link' => _x( 'Link to renewal page', 'settings', 'WPBDM' ),
+                                                            'site' => _x( 'Link to your site', 'settings', 'WPBDM' )  ) )
                           );
 
         /* Payment settings */
         $g = $this->add_group('payment', _x('Payment', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'general', _x('Payment Settings', 'admin settings', 'WPBDM'));
+
+        $this->add_setting( $s, 'fee-order', 'Fee Order', 'core', array( 'method' => 'label', 'order' => 'asc' ) );
         $this->add_setting($s, 'payments-on', _x('Turn On payments?', 'admin settings', 'WPBDM'), 'boolean', false);
 
         $this->add_setting($s, 'payments-test-mode', _x('Put payment gateways in test mode?', 'admin settings', 'WPBDM'), 'boolean', true);
         $this->register_dep( 'payments-test-mode', 'requires-true', 'payments-on' );
+
+        $this->add_setting( $s,
+                            'payments-use-https',
+                            _x( 'Perform checkouts on the secure (HTTPS) version of your site?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false,
+                            _x( 'Recommended for added security. For this to work you need to enable HTTPS on your server and <a>obtain an SSL certificate</a>.', 'admin settings', 'WPBDM' ) );
+        $this->register_dep( 'payments-use-https', 'requires-true', 'payments-on' );
 
         // PayPal currency codes from https://cms.paypal.com/us/cgi-bin/?cmd=_render-content&content_ID=developer/e_howto_api_nvp_currency_codes
         $this->add_setting($s, 'currency', _x('Currency Code', 'admin settings', 'WPBDM'), 'choice', 'USD', '',

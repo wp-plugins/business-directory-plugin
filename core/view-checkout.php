@@ -26,7 +26,7 @@ class WPBDP_Checkout_Page extends WPBDP_View {
 
                 if ( isset( $payment_data['payment_id'] ) && isset( $payment_data['verify'] ) ) { // TODO: check 'verify'.
                     $this->payment = WPBDP_Payment::get( $payment_data['payment_id'] );
-                } 
+                }
             }
         }
 
@@ -35,7 +35,7 @@ class WPBDP_Checkout_Page extends WPBDP_View {
 
         $step = 'gateway_selection';
 
-        if ( $this->payment->is_rejected() )
+        if ( $this->payment->is_rejected() || $this->payment->is_canceled() )
             $step = 'rejected';
         elseif ( ! $this->payment->is_pending() ) {
             $step = 'done';
@@ -43,40 +43,58 @@ class WPBDP_Checkout_Page extends WPBDP_View {
             if ( $this->payment->get_data( 'returned' ) )
                 $step = 'pending_verification';
             elseif ( $this->payment->get_gateway() )
-                $step = 'checkout'; 
+                $step = 'checkout';
         }
 
         return call_user_func( array( &$this, $step ) );
     }
 
     private function gateway_selection() {
-        $html  = '';
-
         global $wpbdp;
+
+        // Auto-select gateway if there is only one available.
+        $gateways = $wpbdp->payments->get_available_methods();
+        if ( 1 == count( $gateways ) ) {
+            $this->payment->set_payment_method( array_pop( $gateways ) );
+            $this->payment->save();
+            return $this->checkout();
+        }
+
+        $html  = '';
+        do_action_ref_array( 'wpbdp_checkout_page_process', array( &$this->payment ) );
 
         if ( isset( $_POST['payment_method'] ) ) {
             $payment_method = trim( $_POST['payment_method'] );
 
             if ( ! $payment_method ) {
-                $html .= wpbdp_render_msg( _x( 'Please select a valid payment method.', 'checkout', 'WPBDM' ), 'error' );
+//                $html .= wpbdp_render_msg( _x( 'Please select a valid payment method.', 'checkout', 'WPBDM' ), 'error' );
             } else {
                 $this->payment->set_payment_method( $payment_method );
                 $this->payment->save();
                 return $this->checkout();
             }
-
         }
 
         $html .= '<form action="' . esc_url( $this->payment->get_checkout_url() ) . '" method="POST">';
         $html .= $wpbdp->payments->render_invoice( $this->payment );
+        $html .= wpbdp_capture_action_array( 'wpbdp_checkout_page_before_method_selection', array( &$this->payment ) );
         $html .= $wpbdp->payments->render_payment_method_selection( $this->payment );
-        $html .= '<input type="submit" value="Continue" />';
+        $html .= '<input type="submit" value="' . _x( 'Continue', 'checkout', 'WPBDM' ) . '" />';
         $html .= '</form>';
 
         return $html;
     }
 
     private function checkout() {
+        if ( ! is_ssl() && wpbdp_get_option( 'payments-use-https' ) ) {
+            return wpbdp_render_msg(
+                    str_replace( '<a>',
+                                 '<a href="' . $this->payment->get_checkout_url() . '">',
+                                 _x( 'Payments are not allowed on the non-secure version of this site. Please <a>continue to the secure server to proceed with your payment</a>.', 'checkout', 'WPBDM' ) ),
+                    'error'
+            );
+        }
+
         $html  = '';
         $html .= $this->api->render_standard_checkout_page( $this->payment, array( 'retry_rejected' => true ) );
 
@@ -107,12 +125,12 @@ class WPBDP_Checkout_Page extends WPBDP_View {
         $html  = '';
         $html .= wpbdp_render_msg( _x( 'Your payment was received sucessfully.', 'checkout', 'WPBDM' ) );
         $html .= $this->api->render_details( $this->payment );
-        
+
         $html .= '<p>';
         if ( $listing->is_published() )
             $html .= sprintf( '<a href="%s">%s</a>',
                               $listing->get_permalink(),
-                              _x( '← Return to your listing.', 'checkout', 'WPBDM' ) );            
+                              _x( '← Return to your listing.', 'checkout', 'WPBDM' ) );
         else
             $html .= sprintf( '<a href="%s">%s</a>',
                               wpbdp_get_page_link( 'main' ),

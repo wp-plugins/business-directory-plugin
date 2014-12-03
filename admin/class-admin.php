@@ -41,6 +41,9 @@ class WPBDP_Admin {
         add_filter('wp_terms_checklist_args', array($this, '_checklist_args')); // fix issue #152
 
         add_action( 'wp_ajax_wpbdp-formfields-reorder', array( &$this, 'ajax_formfields_reorder' ) );
+        
+        add_action( 'wp_ajax_wpbdp-admin-fees-set-order', array( &$this, 'ajax_fees_set_order' ) );
+        add_action( 'wp_ajax_wpbdp-admin-fees-reorder', array( &$this, 'ajax_fees_reorder' ) );
 
         add_action( 'wp_ajax_wpbdp-listing_set_expiration', array( &$this, 'ajax_listing_set_expiration' ) );
         add_action( 'wp_ajax_wpbdp-listing_remove_category', array( &$this, 'ajax_listing_remove_category' ) );
@@ -48,9 +51,9 @@ class WPBDP_Admin {
 
         add_action( 'wp_ajax_wpbdp-renderfieldsettings', array( 'WPBDP_FormFieldsAdmin', '_render_field_settings' ) );
 
+        add_action( 'wp_ajax_wpbdp-create-main-page', array( &$this, 'ajax_create_main_page' ) );
         add_action( 'wp_ajax_wpbdp-drip_subscribe', array( &$this, 'ajax_drip_subscribe' ) );
         add_action( 'wp_ajax_wpbdp-set_site_tracking', 'WPBDP_SiteTracking::handle_ajax_response' );
-
 
         $this->listings = new WPBDP_Admin_Listings();
         $this->csv_export = new WPBDP_Admin_CSVExport();
@@ -77,7 +80,7 @@ class WPBDP_Admin {
         }
 
         // Ask for site tracking if needed.
-        if ( !wpbdp_get_option( 'tracking-on', false ) && !get_option( 'wpbdp-tracking-dismissed', false ) && current_user_can( 'administrator' ) ) {
+        if ( ! wpbdp_get_option( 'tracking-on', false ) && get_option( 'wpbdp-show-tracking-pointer', 0 ) && current_user_can( 'administrator' ) ) {
             wp_enqueue_style( 'wp-pointer' );
             wp_enqueue_script( 'wp-pointer' );
             add_action( 'admin_print_footer_scripts', 'WPBDP_SiteTracking::request_js' );
@@ -134,6 +137,34 @@ class WPBDP_Admin {
                              sprintf( $js, 1 ),
                              _x( 'No, thanks', 'drip pointer', 'WPBDM' ),
                              sprintf( $js, 0 ) );
+    }
+
+    /**
+     * @since 3.5.3
+     */
+    public function ajax_create_main_page() {
+        $nonce = isset( $_REQUEST['_wpnonce'] ) ? $_REQUEST['_wpnonce'] : '';
+
+        if ( ! current_user_can( 'administrator' ) || ! $nonce || ! wp_verify_nonce( $nonce, 'create main page' ) )
+            exit();
+
+        if ( wpbdp_get_page_id( 'main' ) )
+            exit();
+
+        $page = array( 'post_status' => 'publish',
+                       'post_title' => _x( 'Business Directory', 'admin', 'WPBDM' ),
+                       'post_type' => 'page',
+                       'post_content' => '[businessdirectory]' );
+        $page_id = wp_insert_post( $page );
+
+        if ( ! $page_id )
+            exit();
+
+        $res = new WPBDP_Ajax_Response();
+        $res->set_message( str_replace( '<a>',
+                                        '<a href="' . get_permalink( $page_id ) . '" target="_blank">',
+                                        _x( 'You\'re all set. Visit your new <a>Business Directory</a> page.', 'admin', 'WPBDM' ) ) );
+        $res->send();
     }
 
     /**
@@ -338,6 +369,40 @@ class WPBDP_Admin {
 
         if ( ! $wpbdp->formfields->set_fields_order( $order ) )
             $response->send_error();
+
+        $response->send();
+    }
+
+    public function ajax_fees_set_order() {
+        $nonce = isset( $_POST['_wpnonce'] ) ? $_POST['_wpnonce'] : '';
+        $order = isset( $_POST['fee_order'] ) ? $_POST['fee_order'] : false;
+
+        if ( ! wp_verify_nonce( $nonce, 'change fees order' ) || ! $order )
+            exit();
+
+        $res = new WPBDP_Ajax_Response();
+        wpbdp_set_option( 'fee-order', $order );
+        $res->send();
+    }
+
+    public function ajax_fees_reorder() {
+        global $wpdb;
+
+        $response = new WPBDP_Ajax_Response();
+
+        if ( ! current_user_can( 'administrator' ) )
+            $response->send_error();
+
+        $order = array_map( 'intval', isset( $_REQUEST['order'] ) ? $_REQUEST['order'] : array() );
+
+        if ( ! $order )
+            $response->send_error();
+
+        $weight = count( $order ) - 1;
+        foreach( $order as $fee_id ) {
+            $wpdb->update( $wpdb->prefix . 'wpbdp_fees', array( 'weight' => $weight ), array( 'id' => $fee_id ) );
+            $weight--;
+        }
 
         $response->send();
     }
@@ -689,17 +754,14 @@ class WPBDP_Admin {
 
     /* Required pages check. */
     public function check_for_required_pages() {
-        if (!wpbdp_get_page_id('main') && current_user_can( 'administrator' ) ) {
-            if (isset($_GET['action']) && $_GET['action'] == 'createmainpage') // do not show message in the page creating the main page
-                return;
-
+        if ( ! wpbdp_get_page_id( 'main' ) && current_user_can( 'administrator' ) ) {
             $message = _x('<b>Business Directory Plugin</b> requires a page with the <tt>[businessdirectory]</tt> shortcode to function properly.', 'admin', 'WPBDM');
             $message .= '<br />';
             $message .= _x('You can create this page by yourself or let Business Directory do this for you automatically.', 'admin', 'WPBDM');
             $message .= '<p>';
-            $message .= sprintf('<a href="%s" class="button">%s</a>',
-                                admin_url('admin.php?page=wpbdp_admin&action=createmainpage'),
-                                _x('Create required pages for me', 'admin', 'WPBDM'));
+            $message .= sprintf( '<a href="#" class="button wpbdp-create-main-page-button" data-nonce="%s">%s</a>',
+                                 wp_create_nonce( 'create main page' ),
+                                 _x( 'Create required pages for me', 'admin', 'WPBDM' ) );
             $message .= '</p>';
 
             $this->messages[] = array($message, 'error');
@@ -769,14 +831,6 @@ class WPBDP_Admin {
     }
 
     public function main_menu() {
-        if ( isset( $_GET['action'] ) && 'createmainpage' == $_GET['action'] && ! wpbdp_get_page_id( 'main' ) ) {
-            $page = array( 'post_status' => 'publish',
-                           'post_title' => _x( 'Business Directory', 'admin', 'WPBDM' ),
-                           'post_type' => 'page',
-                           'post_content' => '[businessdirectory]' );
-            wp_insert_post( $page );
-        }
-
         echo wpbdp_render_page( WPBDP_PATH . 'admin/templates/home.tpl.php' );
     }
 

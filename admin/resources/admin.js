@@ -89,7 +89,7 @@ var WPBDP_associations_fieldtypes = {};
 
 jQuery(document).ready(function($){
 
-    /* Manage Fees */
+    // {{ Manage Fees.
     $('form#wpbdp-fee-form input[name="_days"]').change(function(){
         var value = $(this).val();
 
@@ -107,12 +107,47 @@ jQuery(document).ready(function($){
         return true;
     });
 
+    $('.wpbdp-page-admin-fees .wp-list-table.fees tbody').sortable({
+        placeholder: 'wpbdp-draggable-highlight',
+        handle: '.wpbdp-drag-handle',
+        axis: 'y',
+        cursor: 'move',
+        opacity: 0.9,
+        update: function( event, ui ) {
+            var sorted_items = [];
+            $( this ).find( '.wpbdp-drag-handle' ).each( function( i, v ) {
+                sorted_items.push( $( v ).attr('data-fee-id') );
+            } );
+
+            if ( sorted_items )
+        $.post( ajaxurl, { 'action': 'wpbdp-admin-fees-reorder', 'order': sorted_items } );
+        }
+    });
+
     $('form#wpbdp-fee-form').submit(function(){
         // alert($('form#wpbdp-fee-form input[name="fee[days]"]').val());
         // return false;
         $('form input[name="fee[days]"]').removeAttr('disabled');
         return true;
     });
+
+    $( 'select[name="fee_order[method]"], select[name="fee_order[order]"]' ).change(function(e) {
+        $.ajax({
+            url: ajaxurl,
+            data: $(this).parent('form').serialize(),
+            dataType: 'json',
+            type: 'POST',
+            success: function(res) {
+                if ( res.success )
+                    location.reload();
+            }
+        });
+    });
+
+    if ( 'custom' == $('select[name="fee_order[method]"]').val() ) {
+        $( '.wpbdp-page-admin-fees .wp-list-table .wpbdp-drag-handle' ).show();
+    }
+    // }}
 
 
     /* Listing Info Metabox */
@@ -494,6 +529,56 @@ WPBDP_Admin.ProgressBar = function($item, settings) {
 })(jQuery);
 /* }} */
 
+// {{ Widgets.
+(function($) {
+    $(document).ready(function() {
+        if ( $('body.wp-admin.widgets-php').length == 0 ) {
+            return;
+        }
+
+        $( 'input.wpbdp-toggle-images' ).change(function() {
+            var checked = $(this).is(':checked');
+
+            if ( checked ) {
+                $(this).parents('.widget').find('.thumbnail-width-config, .thumbnail-height-config').fadeIn('fast');
+            } else {
+                $(this).parents('.widget').find('.thumbnail-width-config, .thumbnail-height-config').fadeOut('fast');
+            }
+        });
+
+    });
+})(jQuery);
+// }}
+
+// {{ Create main page warning.
+(function($) {
+    $(document).ready(function() {
+        $( 'a.wpbdp-create-main-page-button' ).click(function(e) {
+            e.preventDefault();
+            var $msg = $(this).parents('div.error');
+
+            $.ajax({
+                'url': ajaxurl,
+                'data': { 'action': 'wpbdp-create-main-page',
+                          '_wpnonce': $(this).attr('data-nonce') },
+                'dataType': 'json',
+                success: function(res) {
+                    if ( ! res.success )
+                        return;
+
+                    $msg.fadeOut( 'fast', function() {
+                        $(this).html( '<p>' + res.message + '</p>' )
+                        $(this).removeClass('error')
+                        $(this).addClass('updated')
+                        $(this).fadeIn( 'fast' );
+                    } );
+                }
+            });
+        });
+    });
+})(jQuery);
+// }}
+
 // {{ Settings - License Activation.
 (function($) {
     var l = WPBDP_Admin.licensing = {
@@ -558,10 +643,13 @@ WPBDP_Admin.ProgressBar = function($item, settings) {
             $( '.wpbdp-license-expired-warning .dismiss' ).click(function (e) {
                 e.preventDefault();
 
+                var module_id = $(this).attr('data-module');
                 var nonce = $(this).attr('data-nonce');
-                $.post( ajaxurl, {'action': 'wpbdp-license-expired-warning-dismiss', 'nonce': nonce}, function(res) {
+                var $warning = $(this).parents('.wpbdp-license-expired-warning');
+
+                $.post( ajaxurl, {'action': 'wpbdp-license-expired-warning-dismiss', 'nonce': nonce, 'module': module_id}, function(res) {
                     if ( res.success ) {
-                        $( '.wpbdp-license-expired-warning' ).fadeOut( 'fast' );
+                        $warning.fadeOut( 'fast' );
                     }
                 }, 'json' );
             });

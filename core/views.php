@@ -62,12 +62,16 @@ class WPBDP_DirectoryController {
                 break;
             case 'editlisting':
             case 'submitlisting':
-                return $this->submit_listing();
+                require_once( WPBDP_PATH . 'core/view-submit-listing.php' );
+                $submit_page = new WPBDP_Submit_Listing_Page( isset( $_REQUEST['listing_id'] ) ? $_REQUEST['listing_id'] : 0 );
+                return $submit_page->dispatch();
+
                 break;
             case 'sendcontactmessage':
                 require_once( WPBDP_PATH . 'core/view-listing-contact.php' );
-                $page = new WPBDP_Listing_Contact_Page();
+                $page = new WPBDP_Listing_Contact_View();
                 return $page->dispatch();
+
                 break;
             case 'deletelisting':
                 return $this->delete_listing();
@@ -76,7 +80,6 @@ class WPBDP_DirectoryController {
                 require_once( WPBDP_PATH . 'core/view-upgrade-listing.php' );
                 $upgrade_page = new WPBDP_Upgrade_Listing_Page();
                 return $upgrade_page->dispatch();
-
 
                 break;
             case 'viewlistings':
@@ -99,6 +102,11 @@ class WPBDP_DirectoryController {
                 $checkout_page = new WPBDP_Checkout_Page();
                 return $checkout_page->dispatch();
                 break;
+            case 'manage-subscriptions':
+                require_once( WPBDP_PATH . 'core/view-manage-subscriptions.php' );
+                $page = new WPBDP_Manage_Subscriptions_View();
+                return $page->dispatch();
+                break;
             default:
                 // Handle custom actions.
                 $page = wpbdp_capture_action_array( 'wpbdp_action_page_' . $this->action );
@@ -112,25 +120,38 @@ class WPBDP_DirectoryController {
 
     /* Show listing. */
     public function show_listing() {
-        if (!$this->check_main_page($msg)) return $msg;
+        if ( ! $this->check_main_page( $msg ) )
+            return $msg;
 
+        $id_or_slug = '';
+        if ( get_query_var( 'listing' ) || isset( $_GET['listing'] ) )
+            $id_or_slug = get_query_var( 'listing' ) ? get_query_var( 'listing' ) : wpbdp_getv( $_GET, 'listing', 0 );
+        else
+            $id_or_slug = get_query_var( 'id' ) ? get_query_var( 'id' ) : wpbdp_getv( $_GET, 'id', 0 );
+
+        $listing_id = wpbdp_get_post_by_id_or_slug( $id_or_slug, 'id', 'id' );
+/*
         if (get_query_var('listing') || isset($_GET['listing'])) {
-            if ($posts = get_posts(array('post_status' => 'publish', 'numberposts' => 1, 'post_type' => WPBDP_POST_TYPE, 'name' => get_query_var('listing') ? get_query_var('listing') : wpbdp_getv($_GET, 'listing', null) ) )) {
+            if ($posts = get_posts(array('post_status' => 'any', 'numberposts' => 1, 'post_type' => WPBDP_POST_TYPE, 'name' => get_query_var('listing') ? get_query_var('listing') : wpbdp_getv($_GET, 'listing', null) ) )) {
                 $listing_id = $posts[0]->ID;
             } else {
                 $listing_id = null;
             }
         } else {
             $listing_id = get_query_var('id') ? get_query_var('id') : wpbdp_getv($_GET, 'id', null);
-        }
+        }*/
 
         if ( !$listing_id )
             return;
 
         $html  = '';
 
-        if ( isset($_GET['preview']) )
-            $html .= wpbdp_render_msg( _x('This is just a preview. The listing has not been published yet.', 'preview', 'WPBDM') );
+        if ( 'publish' != get_post_status( $listing_id ) ) {
+            if ( current_user_can( 'edit_posts' ) )
+                $html .= wpbdp_render_msg( _x('This is just a preview. The listing has not been published yet.', 'preview', 'WPBDM') );
+            else
+                return;
+        }
 
         // Handle ?v=viewname argument for alternative views (other than 'single').
         $view = '';
@@ -222,7 +243,8 @@ class WPBDP_DirectoryController {
 
         $html = wpbdp_render( 'category',
                              array(
-                                'category' => get_term( $tag_id, WPBDP_TAGS_TAX ),
+                                'title' => esc_attr( $tag->name ),
+                                'category' => $tag,
                                 'is_tag' => true
                                 ),
                              false );        
@@ -391,10 +413,10 @@ class WPBDP_DirectoryController {
     public function search() {
         $_REQUEST = stripslashes_deep( $_REQUEST );
 
+        $search_args = array();
         $results = array();
 
         if ( isset( $_GET['dosrch'] ) ) {
-            $search_args = array();
             $search_args['q'] = wpbdp_getv($_GET, 'q', null);
             $search_args['fields'] = array(); // standard search fields
             $search_args['extra'] = array(); // search fields added by plugins

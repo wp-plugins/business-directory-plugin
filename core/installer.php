@@ -2,7 +2,7 @@
 
 class WPBDP_Installer {
 
-    const DB_VERSION = '3.9';
+    const DB_VERSION = '4.0';
 
     private $installed_version = null;
 
@@ -12,28 +12,6 @@ class WPBDP_Installer {
     }
 
     public function install() {
-        if ( self::DB_VERSION == $this->installed_version )
-            return;
-
-        $this->update_database_schema();
-
-        if ( !wpbdp_get_option( 'tracking-on', false ) )
-            delete_option( 'wpbdp-tracking-dismissed' );
-
-        if ( $this->installed_version ) {
-            wpbdp_log('WPBDP is already installed.');
-            $this->_update();
-        } else {
-            wpbdp_log('New installation. Creating default form fields.');
-            global $wpbdp;
-            $wpbdp->formfields->create_default_fields();
-
-            add_option( 'wpbdp-show-drip-pointer', 1 );
-        }
-
-        delete_option('wpbusdirman_db_version');
-        update_option('wpbdp-db-version', self::DB_VERSION);
-
         // schedule expiration hook if needed
         if (!wp_next_scheduled('wpbdp_listings_expiration_check')) {
             wpbdp_log('Expiration check was not in schedule. Scheduling.');
@@ -41,6 +19,30 @@ class WPBDP_Installer {
         } else {
             wpbdp_log('Expiration check was in schedule. Nothing to do.');
         }
+
+        if ( self::DB_VERSION == $this->installed_version )
+            return;
+
+        $this->update_database_schema();
+
+        if ( $this->installed_version ) {
+            wpbdp_log('WPBDP is already installed.');
+            $this->_update();
+        } else {
+            wpbdp_log('New installation. Creating default form fields.');
+            global $wpbdp;
+
+            // Create default category.
+            wp_insert_term( _x( 'General', 'default category name', 'WPBDM' ), WPBDP_CATEGORY_TAX );
+
+            $wpbdp->formfields->create_default_fields();
+
+            add_option( 'wpbdp-show-drip-pointer', 1 );
+            add_option( 'wpbdp-show-tracking-pointer', 1 );
+        }
+
+        delete_option('wpbusdirman_db_version');
+        update_option('wpbdp-db-version', self::DB_VERSION);
     }
 
     /**
@@ -73,7 +75,8 @@ class WPBDP_Installer {
             days smallint unsigned NOT NULL DEFAULT 0,
             images smallint unsigned NOT NULL DEFAULT 0,
             categories blob NOT NULL,
-            extra_data blob NULL
+            extra_data blob NULL,
+            weight int(5) NOT NULL DEFAULT 0
         ) DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;";
 
         $schema['payments'] = "CREATE TABLE {$wpdb->prefix}wpbdp_payments (

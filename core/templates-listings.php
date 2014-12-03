@@ -15,7 +15,7 @@ function wpbdp_render_listing($listing_id=null, $view='single', $echo=false) {
     if ($listing_id)  {
         $args = array( 'post_type' => WPBDP_POST_TYPE, 'p' => $listing_id );
 
-        if ( !isset( $_GET['preview'] ) )
+        if ( ! current_user_can( 'edit_posts') )
             $args['post_status'] = 'publish';
 
         query_posts( $args );
@@ -114,13 +114,6 @@ function _wpbdp_render_single() {
 
     $html .= apply_filters('wpbdp_listing_view_after', '', $post->ID, 'single');
     $html .= wpbdp_capture_action('wpbdp_after_single_view', $post->ID);
-
-    $show_contact_form = apply_filters('wpbdp_show_contact_form', wpbdp_get_option('show-contact-form'), $post->ID);
-    if ($show_contact_form) {
-        $html .= '<div class="contact-form">';
-        $html .= wpbdp_listing_contact_form();
-        $html .= '</div>';
-    }
 
     if (wpbdp_get_option('show-comment-form')) {
         $html .= '<div class="comments">';

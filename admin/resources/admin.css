@@ -57,14 +57,32 @@ span.tag {
 
 /* {{{ "Manage Fees" page. */
 
+.wpbdp-page-admin-fees .wp-list-table .wpbdp-drag-handle {
+    margin-right: 15px;
+    display: none;
+}
+
 .wpbdp-page-admin-fees .purchase-gateways {
-    padding: 10px;
+    margin-left: 20px;
 }
 
 .wpbdp-page-admin-fees .purchase-gateways .gateway {
     float: left;
-    width: 30%;
-    margin-right: 25px;
+    width: 35%;
+    margin: 30px 20px 0 0;
+/*    height: 180px;*/
+}
+
+.wpbdp-page-admin-fees .purchase-gateways .gateway.installed {
+    opacity: 0.5;
+}
+
+.wpbdp-page-admin-fees .purchase-gateways .gateway a img.gateway-logo {
+/*    width: 30%;*/
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: none;
 }
 
 .wpbdp-page-admin-fees .purchase-gateways .gateway a.price {
@@ -73,6 +91,12 @@ span.tag {
     color: green;
     font-size: 22px;
     font-weight: bold;
+}
+
+.wpbdp-page-admin-fees .purchase-gateways .gateway .check-mark {
+    font-size: 150%;
+    font-weight: bold;
+    color: green;
 }
 
 /* }}} */
@@ -213,7 +237,7 @@ ul#wpbusdirmanerrors { margin-left:20px; }
     font-size: 90%;
     font-family: monospace;
     height: 100%;
-    white-space: nowrap;
+    white-space: pre;
 }
 
 #wpbdp-csv-import-form input[type="file"] {
@@ -625,5 +649,21 @@ body.taxonomy-wpbdp_category .column-id {
     width: 50%;
     min-height: 100px;
     display: none;
+}
+/* }} */
+
+.wpbdp-license-expired-warning .module-name {
+    background: #fff9aa;
+    padding: 0 5px;
+    color: #000;
+}
+
+.wpbdp-license-expired-warning .dismiss {
+    margin-right: 10px;
+}
+
+/* {{ Widget config. */
+.wp-admin.widgets-php .widget-content span.help {
+    color: #666;
 }
 /* }} */

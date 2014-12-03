@@ -480,14 +480,6 @@ ul.validation-errors li {
     color: #900000;
 }
 
-.widget_wpbdp_featuredlistingswidget .listing-thumbnail img {
-    max-width: 100%;
-}
-
-.widget_wpbdp_featuredlistingswidget li {
-    margin-bottom: 4px;
-}
-
 .wpbdp-recaptcha-error {
     color: #ff0000;
 }
@@ -500,3 +492,48 @@ ul.validation-errors li {
     border: none;
     box-shadow: none
 }
+
+/*
+ * Manage Subscriptions.
+ */
+table#wpbdp-manage-subscriptions th.listing-title,
+table#wpbdp-manage-subscriptions td.listing-title {
+    min-width: 200px;
+}
+
+table#wpbdp-manage-subscriptions a.cancel-subscription {
+    color: #ff0000;
+}
+
+#wpbdp-manage-subscriptions-cancel dl dd {
+    margin-left: 10px;
+}
+
+#wpbdp-manage-subscriptions-cancel .cancel-instructions {
+}
+
+/* {{ Credit Card details form. */
+.wpbdp-cc-form {
+    padding: 0;
+    width: 90%;
+}
+
+.wpbdp-cc-form h4 {
+    margin: 0;
+}
+
+.wpbdp-cc-field {
+}
+
+.wpbdp-cc-field input {
+    width: auto;
+}
+
+.wpbdp-cc-field label {
+    display: block;
+    font-weight: bold;
+    text-align: right;
+    padding-right: 10px;
+}
+
+/* }} */
