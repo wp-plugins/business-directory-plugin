@@ -1,5 +1,4 @@
 <?php
-
 /**
  * E-mail handling class.
  * @since 2.1
@@ -15,8 +14,8 @@ class WPBDP_Email {
     public $bcc = array();
 
     public $body = '';
-    private $plain = '';
-    private $html = '';
+    public $plain = '';
+    public $html = '';
 
 
 	public function __construct() {
@@ -70,6 +69,8 @@ class WPBDP_Email {
 	 * @return boolean true on success, false otherwise
 	 */
 	public function send($format='both') {
+        $this->subject = strip_tags( $this->subject );
+
 		// TODO: implement 'plain' and 'both'
 		$this->prepare_html();
 		$this->prepare_plain();

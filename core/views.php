@@ -30,7 +30,7 @@ class WPBDP_DirectoryController {
     }
 
     public function _handle_action(&$wp) {
-        if ( is_page() && get_the_ID() == wpbdp_get_page_id( 'main' ) ) {
+        if ( is_page() && in_array( get_the_ID(), wpbdp_get_page_id( 'main', false ) ) ) {
             $action = get_query_var('action') ? get_query_var('action') : ( isset( $_REQUEST['action'] ) ? $_REQUEST['action'] : '' );
 
             if (get_query_var('category_id') || get_query_var('category')) $action = 'browsecategory';
@@ -74,7 +74,10 @@ class WPBDP_DirectoryController {
 
                 break;
             case 'deletelisting':
-                return $this->delete_listing();
+                require_once( WPBDP_PATH . 'core/view-delete-listing.php' );
+                $v = new WPBDP_Delete_Listing_View();
+                return $v->dispatch();
+
                 break;
             case 'upgradetostickylisting':
                 require_once( WPBDP_PATH . 'core/view-upgrade-listing.php' );
@@ -102,8 +105,8 @@ class WPBDP_DirectoryController {
                 $checkout_page = new WPBDP_Checkout_Page();
                 return $checkout_page->dispatch();
                 break;
-            case 'manage-subscriptions':
-                require_once( WPBDP_PATH . 'core/view-manage-subscriptions.php' );
+            case 'manage-recurring':
+                require_once( WPBDP_PATH . 'core/view-manage-recurring.php' );
                 $page = new WPBDP_Manage_Subscriptions_View();
                 return $page->dispatch();
                 break;
@@ -285,23 +288,31 @@ class WPBDP_DirectoryController {
 
     /* display featured listings */
     public function view_featured_listings($args) {
-        extract($args);
+        $no_listings = isset( $args['number_of_listings'] ) ? intval( $args['number_of_listings'] ) : 0;
 
-        $html = "";
+        if ( ! $no_listings )
+            $no_listings = wpbdp_get_option( 'listings-per-page' );
 
-        $posts = get_posts(array(
+        $html  = '';
+
+        global $wp_query;
+        $old_query = $wp_query;
+
+        query_posts( array(
             'post_type' => WPBDP_POST_TYPE,
             'post_status' => 'publish',
-            'numberposts' => $args['number_of_listings'],
-            'orderby' => 'date',
+            'paged' => get_query_var( 'paged' ) ? get_query_var( 'paged' ) : 1,
+            'posts_per_page' => $no_listings,
             'meta_query' => array(
-                array('key' => '_wpbdp[sticky]', 'value' => 'sticky')
+                array( 'key' => '_wpbdp[sticky]', 'value' => 'sticky' )
             )
-        ));
+        ) );
 
-        foreach ($posts as $post) {
-            $html .= wpbdp_render_listing($post->ID, 'excerpt');
-        }
+        $html  = '';
+        $html .= wpbdp_render( 'businessdirectory-listings' );
+
+        $wp_query = $old_query;
+        wp_reset_query();
 
         return $html;
     }
@@ -390,21 +401,6 @@ class WPBDP_DirectoryController {
             wp_reset_query();
 
         return $html;
-    }
-
-    public function delete_listing() {
-        if ($listing_id = wpbdp_getv($_REQUEST, 'listing_id')) {
-            if ( (wp_get_current_user()->ID == get_post($listing_id)->post_author) || (current_user_can('administrator')) ) {
-                $post_update = array('ID' => $listing_id,
-                                     'post_type' => WPBDP_POST_TYPE,
-                                     'post_status' => wpbdp_get_option('deleted-status'));
-                
-                wp_update_post($post_update);
-
-                return wpbdp_render_msg(_x('The listing has been deleted.', 'templates', 'WPBDM'))
-                      . $this->main_page();
-            }
-        }
     }
 
     /*

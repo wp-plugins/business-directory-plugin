@@ -1,6 +1,4 @@
 <?php
-// FIXME: this class is huge.
-
 class WPBDP_Settings {
 
     const PREFIX = 'wpbdp-';
@@ -17,6 +15,7 @@ class WPBDP_Settings {
         $this->groups = array();
         $this->settings = array();
 
+        add_action( 'wp_ajax_wpbdp-admin-settings-email-preview', array( &$this, '_ajax_email_preview' ) );
         add_filter( 'wpbdp_settings_render', array( &$this, 'after_render' ), 0, 3 );
     }
 
@@ -120,7 +119,7 @@ class WPBDP_Settings {
         /* Listings settings */
         $g = $this->add_group('listings', _x('Listings', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'general', _x('General Settings', 'admin settings', 'WPBDM'));
-        
+
         $this->add_setting($s, 'listings-per-page', _x('Listings per page', 'admin settings', 'WPBDM'), 'text', '10',
                            _x('Number of listings to show per page. Use a value of "0" to show all listings.', 'admin settings', 'WPBDM'));
 
@@ -128,9 +127,9 @@ class WPBDP_Settings {
                            _x('Use a value of "0" to keep a listing alive indefinitely or enter a number less than 10 years (3650 days).', 'admin settings', 'WPBDM'),
                            null,
                            array($this, '_validate_listing_duration'));
-        
+
         $this->add_setting( $s,
-                            'show-contact-form', 
+                            'show-contact-form',
                             _x( 'Include listing contact form on listing pages?', 'admin settings', 'WPBDM' ),
                             'boolean',
                             true,
@@ -271,9 +270,20 @@ class WPBDP_Settings {
                             _x( 'Display email address fields publicly?', 'admin settings', 'WPBDM' ),
                             'boolean',
                             false,
-                            _x('Shows the email address of the listing owner to all web users. NOT RECOMMENDED as this increases spam to the address and allows spam bots to harvest it for future use.', 'admin settings', 'WPBDM') );
+                           _x('Shows the email address of the listing owner to all web users. NOT RECOMMENDED as this increases spam to the address and allows spam bots to harvest it for future use.', 'admin settings', 'WPBDM') );
+        $this->add_setting( $s,
+                            'listing-email-mode',
+                            _x( 'How to determine the listing\'s email address?', 'admin settings', 'WPBDM' ),
+                            'choice',
+                            'field',
+                            _x( 'This affects emails sent to listing owners via contact forms or when their listings expire.', 'admin settings', 'WPBDM' ),
+                            array( 'choices' => array(
+                                array( 'field', 'Try listing\'s email field first, then author\'s email.' ),
+                                array( 'user',  'Try author\'s email first and then listing\'s email field.' )
 
-        $s = $this->add_section( $g, 'email-notifications', _x( 'Admin Notifications', 'admin settings', 'WPBDM' ) );
+                            ) ) );
+
+        $s = $this->add_section( $g, 'email-notifications', _x( 'E-Mail Notifications', 'admin settings', 'WPBDM' ) );
         $this->add_setting( $s,
                             'admin-notifications',
                             _x( 'Notify admin via e-mail when...', 'admin settings', 'WPBDM' ),
@@ -293,24 +303,19 @@ class WPBDP_Settings {
                             'text',
                             '' );
 
-
-        $s = $this->add_section($g, 'listings/email', _x('Listing email settings', 'admin settings', 'WPBDM'));
         $this->add_setting( $s,
-                            'listing-email-mode',
-                            _x( 'How to determine the listing\'s email address?', 'admin settings', 'WPBDM' ),
+                            'user-notifications',
+                            _x( 'Notify users via e-mail when...', 'admin settings', 'WPBDM' ),
                             'choice',
-                            'field',
-                            _x( 'This affects emails sent to listing owners via contact forms or when their listings expire.', 'admin settings', 'WPBDM' ),
-                            array( 'choices' => array(
-                                array( 'field', 'Try listing\'s email field first, then author\'s email.' ),
-                                array( 'user',  'Try author\'s email first and then listing\'s email field.' )
-
-                            ) ) );
-
-        $this->add_setting($s, 'send-email-confirmation', _x('Send email confirmation to listing owner when listing is submitted?', 'admin settings', 'WPBDM'), 'boolean', false);
-        $this->add_setting($s, 'email-confirmation-message', _x('Email confirmation message', 'admin settings', 'WPBDM'), 'text',
-                           'Your submission \'[listing]\' has been received and it\'s pending review. This review process could take up to 48 hours.',
-                          _x('You can use the placeholder [listing] for the listing title. This setting applies to non-paying listings only; for paying listings check the "Payment" settings tab.', 'admin settings', 'WPBDM'));
+                            array( 'new-listing', 'listing-published'/*, 'payment-status-change'*/ ),
+                            _x( 'You can modify the text template used for most of these e-mails below.', 'admin settings', 'WPBDM' ),
+                            array( 'choices' => array( 'new-listing' => _x( 'Their listing is submitted.', 'admin settings', 'WPBDM' ),
+                                                       'listing-published' => _x( 'Their listing is approved/published.', 'admin settings', 'WPBDM' )/*,
+                                                       'payment-status-change' => _x( 'A payment status changes (sends a receipt).', 'admin settings', 'WPBDM' ),*/
+                                                        ),
+                                   'use_checkboxes' => true,
+                                   'multiple' => true )
+                          );
 
         // Listing contact.
         $email_contact_template  = '';
@@ -322,33 +327,65 @@ class WPBDP_Settings {
         $email_contact_template .= sprintf( _x( 'Time: %s', 'contact email', 'WPBDM' ), '[date]' );
 
         $s = $this->add_section( $g, 'email/templates', _x( 'E-Mail Templates', 'admin settings', 'WPBDM' ) );
+
+        $this->add_setting( $s,
+                            'email-confirmation-message', _x( 'Email confirmation message', 'admin settings', 'WPBDM' ),
+                            'email_template',
+                            array( 'subject' => '[[site-title]] Listing "[listing]" received',
+                                   'body' => 'Your submission \'[listing]\' has been received and it\'s pending review. This review process could take up to 48 hours.' ),
+                            _x( 'Sent after a listing has been submitted.', 'admin settings', 'WPBDM' ),
+                            array( 'placeholders' => array( 'listing' => array( _x( 'Listing\'s title', 'admin settings', 'WPBDM' ) ) ) )
+                          );
+        $this->add_setting( $s,
+                            'email-templates-listing-published', _x( 'Listing published message', 'admin settings', 'WPBDM' ),
+                            'email_template',
+                            array( 'subject' => '[[site-title]] Listing "[listing]" published',
+                                   'body' => _x( 'Your listing "[listing]" is now available at [listing-url] and can be viewed by the public.', 'admin settings', 'WPBDM' ) ),
+                            _x( 'Sent when the listing has been published or approved by an admin.', 'admin settings', 'WPBDM' ),
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s title', 'admin settings', 'WPBDM' ),
+                                                            'listing-url' => _x( 'Listing\'s URL', 'admin settings', 'WPBDM' ) ) )
+                          );
         $this->add_setting( $s,
                             'email-templates-contact',
                             _x( 'Listing Contact Message', 'admin settings', 'WPBDM' ),
-                            'text',
-                            $email_contact_template,
-                            _x( 'You can use the placeholders [listing-url] for the listing\'s URL, [listing] for the listing\'s title, [name] for the sender\'s name, [email] for the sender\'s email, [message] for the contact message and [date] for the date the message was sent.',
-                                'admin settings',
-                                'WPBDM' ),
-                            array( 'use_textarea' => true ) );
+                            'email_template',
+                            array( 'subject' => '[[site-title]] Contact via "[listing]"',
+                                   'body'    => $email_contact_template ),
+                            _x( 'Sent to listing owners when someone uses the contact form on their listing pages.', 'admin settings', 'WPBDM' ),
+                            array( 'placeholders' => array( 'listing-url' => 'Listing\'s URL',
+                                                            'listing' => 'Listing\'s title',
+                                                            'name' => 'Sender\'s name',
+                                                            'email' => 'Sender\'s e-mail address',
+                                                            'message' => 'Contact message',
+                                                            'date' => 'Date and time the message was sent' ) ) );
+
+        $s = $this->add_section( $g,
+                                 'email-renewal-reminders',
+                                 _x( 'Renewal Reminders', 'admin settings', 'WPBDM' ),
+                                 str_replace( '<a>',
+                                              '<a href="' . admin_url( 'admin.php?page=wpbdp_admin_settings&groupid=listings#listings/renewals' ) . '">',
+                                              _x( 'This section refers only to the text of the renewal/expiration notices. You can also <a>configure when the e-mails are sent</a>.', 'admin settings', 'WPBDM' ) ) );
+
         $this->add_setting( $s,
-                            'renewal-pending-message',
-                            _x( 'Pending expiration e-mail message', 'admin settings', 'WPBDM' ),
-                            'text_template',
-                            self::_EMAIL_PENDING_RENEWAL_MESSAGE,
-                            '',
-                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
-                                                            'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
-                                                            'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
-                                                            'category' => _x( 'Category that is going to expire', 'settings', 'WPBDM' ),
-                                                            'link' => _x( 'Link to renewal page', 'settings', 'WPBDM' ),
-                                                            'site' => _x( 'Link to your site', 'settings', 'WPBDM' )  ) )
-                            );
+                'renewal-pending-message',
+                _x( 'Pending expiration e-mail message', 'admin settings', 'WPBDM' ),
+                'email_template',
+                array( 'subject' => '[[site-title]] [listing] - Expiration notice',
+                       'body' => self::_EMAIL_PENDING_RENEWAL_MESSAGE ),
+                _x( 'Sent some time before the listing expires. Applies to non-recurring renewals only.', 'settings', 'WPBDM' ),
+                array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
+                                                'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
+                                                'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
+                                                'category' => _x( 'Category that is going to expire', 'settings', 'WPBDM' ),
+                                                'link' => _x( 'Link to renewal page', 'settings', 'WPBDM' ),
+                                                'site' => _x( 'Link to your site', 'settings', 'WPBDM' )  ) )
+                );
         $this->add_setting( $s,
                             'listing-renewal-message', _x('Listing Renewal e-mail message', 'admin settings', 'WPBDM'),
-                            'text_template',
-                            self::_EMAIL_RENEWAL_MESSAGE,
-                            '',
+                            'email_template',
+                            array( 'subject' => '[[site-title]] [listing] - Expiration notice',
+                                   'body' => self::_EMAIL_RENEWAL_MESSAGE ),
+                            _x( 'Sent at the time of listing expiration. Applies to non-recurring renewals only.', 'settings', 'WPBDM' ),
                             array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
                                                             'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
                                                             'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
@@ -358,9 +395,10 @@ class WPBDP_Settings {
                           );
         $this->add_setting( $s,
                             'listing-autorenewal-notice', _x( 'Listing auto-renewal reminder (recurring payments)', 'admin settings', 'WPBDM'),
-                            'text_template',
-                            self::_EMAIL_AUTORENEWAL_PENDING_MESSAGE,
-                            '',
+                            'email_template',
+                            array( 'subject' => '[[site-title]] [listing] - Renewal reminder',
+                                   'body' => self::_EMAIL_AUTORENEWAL_PENDING_MESSAGE ),
+                            _x( 'Sent some time before the listing is auto-renewed. Applies to recurring renewals only.', 'settings', 'WPBDM' ),
                             array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
                                                             'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
                                                             'date' => _x( 'Renewal date', 'settings', 'WPBDM' ),
@@ -370,9 +408,10 @@ class WPBDP_Settings {
                           );
         $this->add_setting( $s,
                             'listing-autorenewal-message', _x('Listing Renewal e-mail message (recurring payments)', 'admin settings', 'WPBDM'),
-                            'text_template',
-                            self::_EMAIL_AUTORENEWAL_MESSAGE,
-                            '',
+                            'email_template',
+                            array( 'subject' => '[[site-title]] [listing] renewed',
+                                   'body' => self::_EMAIL_AUTORENEWAL_MESSAGE ),
+                            _x( 'Sent after the listing is auto-renewed. Applies to recurring renewals only.', 'settings', 'WPBDM' ),
                             array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
                                                             'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
                                                             'category' => _x( 'Renewed category', 'settings', 'WPBDM' ),
@@ -382,9 +421,10 @@ class WPBDP_Settings {
         $this->add_setting( $s,
                             'renewal-reminder-message',
                             _x( 'Renewal reminder e-mail message', 'admin settings', 'WPBDM' ),
-                            'text_template',
-                            "Dear Customer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link].",
-                            '',
+                            'email_template',
+                            array( 'subject' => '[[site-title]] [listing] - Expiration reminder',
+                                   'body' => "Dear Customer\nWe've noticed that you haven't renewed your listing \"[listing]\" for category [category] at [site] and just wanted to remind you that it expired on [expiration]. Please remember you can still renew it here: [link]." ),
+                            _x( 'Sent some time after listing expiration and when no renewal has occurred. Applies to both recurring and non-recurring renewals.', 'settings', 'WPBDM' ),
                             array( 'placeholders' => array( 'listing' => _x( 'Listing\'s name (with link)', 'settings', 'WPBDM' ),
                                                             'author' => _x( 'Author\'s name', 'settings', 'WPBDM' ),
                                                             'expiration' => _x( 'Expiration date', 'settings', 'WPBDM' ),
@@ -440,7 +480,7 @@ class WPBDP_Settings {
                                 array('USD', _x('U.S. Dollar', 'admin settings', 'WPBDM')),
                             )));
         $this->register_dep( 'currency', 'requires-true', 'payments-on' );
-        
+
         $this->add_setting($s, 'currency-symbol', _x('Currency Symbol', 'admin settings', 'WPBDM'), 'text', '$');
         $this->register_dep( 'currency-symbol', 'requires-true', 'payments-on' );
 
@@ -506,13 +546,13 @@ class WPBDP_Settings {
         $fields = array();
 
         foreach (  wpbdp_get_form_fields() as $f ) {
-            if ( in_array( $f->get_field_type_id(), array( 'textarea', 'select', 'checkbox', 'url' ), true ) || 
+            if ( in_array( $f->get_field_type_id(), array( 'textarea', 'select', 'checkbox', 'url' ), true ) ||
                  in_array( $f->get_association(), array( 'category', 'tags' ), true ) )
                 continue;
 
             $fields[ $f->get_id() ] = $f->get_label();
         }
-        
+
         $fields['user_login'] = 'User';
         $fields['user_registered'] = 'User registration date';
         $fields['date'] = 'Date posted';
@@ -587,7 +627,7 @@ class WPBDP_Settings {
 
     public function add_setting( $section_key, $name, $label, $type = 'text', $default = null, $help_text = '', $args = array(),
                                  $validator = null, $callback = null ) {
-        
+
         if ( $type == 'core' )
             return $this->add_core_setting( $name, $default );
 
@@ -623,6 +663,11 @@ class WPBDP_Settings {
             $setting->args = $args;
             $setting->validator = $validator;
             $setting->callback = $callback;
+
+            $setup_cb = '_setting_' . $setting->type . '_setup';
+            if ( is_callable( array( $this, $setup_cb ) ) ) {
+                call_user_func_array( array( $this, $setup_cb ), array( &$setting ) );
+            }
 
             $this->groups[$group]->sections[$section]->settings[$name] = $setting;
         }
@@ -848,6 +893,157 @@ class WPBDP_Settings {
         $setting->help_text = $help_text_original;
 
         echo $html;
+    }
+
+    function _setting_email_template( $args ) {
+        $setting = $args['setting'];
+        $value = $this->get( $setting->name );
+
+        if ( ! is_array( $value ) ) {
+            $body = $value;
+
+            $value = array();
+            $value['subject'] = $setting->default['subject'];
+            $value['body'] = $body;
+        }
+
+        $html  = '';
+        $html .= '<span class="description">' . $setting->help_text . '</span>';
+        $html .= sprintf( '<div class="wpbdp-settings-email" data-setting="%s">',
+                          $setting->name );
+
+        $html .= '<div class="short-preview" title="' . _x( 'Click to edit e-mail', 'settings email', 'WPBDM' ) . '">';
+        $html .= '<span class="edit-toggle tag">' . _x( 'Click to edit', 'settings email', 'WPBDM' ) . '</span>';
+        $html .= '<h4>';
+        $html .= $value['subject'];
+        $html .= '</h4>';
+        $html .= $value['body'];
+        $html .=  '...';
+        $html .= '</div>';
+
+        $html .= sprintf( '<div class="editor" style="display: none;" data-preview-nonce="%s">', wp_create_nonce( 'preview email ' . $setting->name ) );
+        $html .= '<table class="form-table"><tbody>';
+        $html .= '<tr>';
+        $html .= sprintf( '<th scope="row"><label for="%s-subject">%s</label</th>',
+                          $setting->name,
+                          _x( 'E-Mail Subject', 'settings email', 'WPBDM' ) );
+        $html .= '<td>';
+        $html .= sprintf( '<input type="text" name="%s" value="%s" id="%s" class="subject-text">',
+                          self::PREFIX . $setting->name . '[subject]',
+                          esc_attr( $value['subject'] ),
+                          $setting->name . '-subject' );
+        $html .= '</td>';
+        $html .= '</tr>';
+        $html .= '<tr>';
+        $html .= sprintf( '<th scope="row"><label for="%s-body">%s</label</th>',
+                          $setting->name,
+                          _x( 'E-Mail Body', 'settings email', 'WPBDM' ) );
+        $html .= '<td>';
+        $html .= sprintf( '<textarea id="%s" name="%s" class="body-text">%s</textarea>',
+                          $setting->name . '-body',
+                          self::PREFIX . $setting->name . '[body]',
+                          esc_textarea( $value['body'] ) );
+
+        $placeholders = isset( $args['placeholders'] ) ? $args['placeholders'] : array();
+
+        if ( $placeholders ) {
+            $html .= '<div class="placeholders">';
+            $html .= _x( 'You can use the following placeholders:', 'settings email', 'WPBDM' );
+            $html .= '<br /><br />';
+
+            $added_sep = false;
+
+            foreach ( $placeholders as $placeholder => $placeholder_data ) {
+                $description = is_array( $placeholder_data ) ? $placeholder_data[0] : $placeholder_data;
+                $is_core_placeholder = is_array( $placeholder_data ) && isset( $placeholder_data[2] ) && $placeholder_data[2];
+
+                if ( $is_core_placeholder && ! $added_sep ) {
+                    $html .= '<div class="placeholder-separator"></div>';
+                    $added_sep = true;
+                }
+
+                $html .= sprintf( '<div class="placeholder" data-placeholder="%s"><span class="placeholder-code">[%s]</span> - <span class="placeholder-description">%s</span></div>',
+                                  esc_attr( $placeholder ),
+                                  $placeholder,
+                                  $description );
+            }
+            $html .= '</div>';
+        }
+
+        $html .= '<div class="buttons">';
+        $html .= '<a href="#" class="button preview-email">' . _x( 'Preview e-mail', 'settings email', 'WPBDM' ) . '</a> ';
+        $html .= '<a href="#" class="button cancel">' . _x( 'Cancel', 'settings email', 'WPBDM' ) . '</a> ';
+        $html .= '<a href="#" class="button button-primary save">' . _x( 'Save Changes', 'settings email', 'WPBDM' ) . '</a> ';
+        $html .= '</div>';
+
+        $html .= '</td>';
+        $html .= '</tr>';
+        $html .= '</tbody></table>';
+        $html .= '</div>';
+
+        $html .= '</div>';
+
+        echo apply_filters( 'wpbdp_settings_render', $html, $setting, $args );
+    }
+
+    function _setting_email_template_setup( &$setting ) {
+        if ( ! isset( $setting->args['placeholders'] ) || ! is_array( $setting->args['placeholders'] ) )
+            $setting->args['placeholders'] = array();
+
+        // Add default placeholders.
+        $setting->args['placeholders'] = array_merge( $setting->args['placeholders'], array(
+            'site-title'    => array( _x( 'Site title', 'settings email', 'WPBDM' ),
+                                      get_bloginfo( 'name' ),
+                                      'core' ),
+            'site-link'    => array( _x( 'Site title (with link)', 'settings email', 'WPBDM' ),
+                                      sprintf( '<a href="%s">%s</a>', get_bloginfo( 'url' ), get_bloginfo( 'name' ) ),
+                                      'core' ),
+            'site-url'      => array( _x( 'Site address (with link)', 'settings email', 'WPBDM' ),
+                                      sprintf( '<a href="%s">%s</a>', get_bloginfo( 'url' ), get_bloginfo( 'url' ) ),
+                                      'core' ),
+            'directory-url' => array( _x( 'Directory URL (with link)', 'settings email', 'WPBDM' ),
+                                      sprintf( '<a href="%1$s">%1$s</a>', wpbdp_get_page_link( 'main' ) ),
+                                      'core' ),
+            'today'         => array( _x( 'Current date', 'settings email', 'WPBDM' ),
+                                      date_i18n( get_option( 'date_format' ) ),
+                                      'core' ),
+            'now'           => array( _x( 'Current time', 'settings email', 'WPBDM' ),
+                                      date_i18n( get_option( 'time_format' ) ),
+                                      'core' )
+        ) );
+    }
+
+    function _ajax_email_preview() {
+        $nonce = isset( $_POST['nonce'] ) ? $_POST['nonce'] : '';
+        $setting = $this->get_setting( isset( $_POST['setting'] ) ? $_POST['setting'] : '' );
+
+        if ( ! $setting || 'email_template' != $setting->type || ! wp_verify_nonce( $nonce, 'preview email ' . $setting->name ) )
+            die();
+
+        $placeholders = isset( $setting->args['placeholders'] ) ? $setting->args['placeholders'] : array();
+
+        $subject = stripslashes( isset( $_POST['subject'] ) ? trim( $_POST['subject'] ) : '' );
+        $body = stripslashes( isset( $_POST['body'] ) ? trim( $_POST['body'] ) : '' );
+
+        $res = new WPBDP_Ajax_Response();
+
+        foreach ( $placeholders as $pholder => $pdata ) {
+            $repl = ( is_array( $pdata ) && count( $pdata ) >= 2 && $pdata[1] ) ? $pdata[1] : '[' . $pholder . ']';
+
+            $subject = str_replace( '[' . $pholder . ']', $repl, $subject );
+            $body = str_replace( '[' . $pholder . ']', $repl, $body );
+        }
+
+        $html  = '';
+        $html .= '<div class="wpbdp-settings-email-preview">';
+        $html .= '<h4>' . $subject . '</h4>';
+        $html .= nl2br( $body );
+        $html .= '</div>';
+
+        $res->add( 'subject', $subject );
+        $res->add( 'body', $body );
+        $res->add( 'html', $html );
+        $res->send();
     }
 
     public function _setting_boolean($args) {

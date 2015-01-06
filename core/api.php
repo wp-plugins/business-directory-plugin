@@ -12,7 +12,7 @@ function wpbdp_get_version() {
     return WPBDP_VERSION;
 }
 
-function wpbdp_get_page_id($name='main') {
+function wpbdp_get_page_id($name='main', $unique=true) {
     global $wpdb;
 
     static $shortcodes = array(
@@ -34,64 +34,73 @@ function wpbdp_get_page_id($name='main') {
         $where .= sprintf(" OR post_content LIKE '%%[%s]%%'", $shortcode);
     }
 
-    $id = wp_cache_get( $name, 'wpbdp pages' );
+    $page_ids = wp_cache_get( $name, 'wpbdp pages' );
 
-    if ( ! $id )
-        $id = $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE ({$where}) AND post_status = 'publish' AND post_type = 'page' LIMIT 1");
+    if ( ! $page_ids ) {
+        $query = "SELECT ID FROM {$wpdb->posts} WHERE ({$where}) AND post_status = 'publish' AND post_type = 'page' ORDER BY ID";
+        $page_ids = $wpdb->get_col( $query );
+        wp_cache_set( $name, $page_ids, 'wpbdp pages' );
+    }
 
-    wp_cache_set( $name, $id, 'wpbdp pages' );
+    if ( ! $page_ids )
+        return false;
 
-    return $id;
+    if ( ! is_array( $page_ids ) )
+        $page_ids = array( $page_ids );
+
+    return $unique ? apply_filters( 'wpbdp_get_page_id', $page_ids[0], $name ) : $page_ids;
 }
 
 function wpbdp_get_page_link($name='main', $arg0=null) {
-    if ( $page_id = wpbdp_get_page_id( $name ) ) {
-        return _get_page_link( $page_id );
+    $page_id = wpbdp_get_page_id( $name );
+
+    if ( $page_id ) {
+        $link = _get_page_link( $page_id );
+    } else {
+        switch ( $name ) {
+            case 'view':
+            case 'viewlisting':
+            case 'show-listing':
+            case 'showlisting':
+                $link = get_permalink( intval( $arg0 ) );
+                break;
+            case 'edit':
+            case 'editlisting':
+            case 'edit-listing':
+            case 'delete':
+            case 'deletelisting':
+            case 'delete-listing':
+            case 'upgrade':
+            case 'upgradetostickylisting':
+            case 'upgradelisting':
+            case 'upgrade-listing':
+                $link = add_query_arg( array( 'action' => $name, 'listing_id' => intval( $arg0 ) ), wpbdp_get_page_link( 'main' ) );
+                break;
+            case 'viewlistings':
+            case 'view-listings':
+                $link = add_query_arg( array( 'action' => 'viewlistings' ), wpbdp_get_page_link( 'main' ) );
+                break;
+            case 'add':
+            case 'addlisting':
+            case 'add-listing':
+            case 'submit':
+            case 'submitlisting':
+            case 'submit-listing':
+                $link = add_query_arg( array( 'action' => 'submitlisting' ), wpbdp_get_page_link( 'main' ) );
+                break;
+            case 'search':
+                $link = add_query_arg( array( 'action' => 'search' ), wpbdp_get_page_link( 'main' ) );
+                break;
+            default:
+                if ( !wpbdp_get_page_id( 'main' ) )
+                    return '';
+
+                $link = wpbdp_get_page_link( 'main' );
+                break;
+        }
     }
 
-    switch ( $name ) {
-        case 'view':
-        case 'viewlisting':
-        case 'show-listing':
-        case 'showlisting':
-            $link = get_permalink( intval( $arg0 ) );
-            break;
-        case 'edit':
-        case 'editlisting':
-        case 'edit-listing':
-        case 'delete':
-        case 'deletelisting':
-        case 'delete-listing':
-        case 'upgrade':
-        case 'upgradetostickylisting':
-        case 'upgradelisting':
-        case 'upgrade-listing':
-            $link = add_query_arg( array( 'action' => $name, 'listing_id' => intval( $arg0 ) ), wpbdp_get_page_link( 'main' ) );
-            break;
-        case 'viewlistings':
-        case 'view-listings':
-            $link = add_query_arg( array( 'action' => 'viewlistings' ), wpbdp_get_page_link( 'main' ) );
-            break;
-        case 'add':
-        case 'addlisting':
-        case 'add-listing':
-        case 'submit':
-        case 'submitlisting':
-        case 'submit-listing':
-            $link = add_query_arg( array( 'action' => 'submitlisting' ), wpbdp_get_page_link( 'main' ) );
-            break;
-        case 'search':
-            $link = add_query_arg( array( 'action' => 'search' ), wpbdp_get_page_link( 'main' ) );
-            break;
-        default:
-            if ( !wpbdp_get_page_id( 'main' ) )
-                return '';
-
-            $link = wpbdp_get_page_link( 'main' );
-            break;
-    }
-
-    return $link;
+    return apply_filters( 'wpbdp_get_page_link', $link, $name, $arg0 );
 }
 
 /* Admin API */
@@ -320,7 +329,7 @@ function wpbdp_get_post_by_id_or_slug( $id_or_slug = false, $try_first = 'id', $
     if ( 'slug' == $try_first )
         $strategies = array( 'slug', 'id' );
     else
-        $strategies = array( 'id', 'slug' );
+        $strategies = is_numeric( $id_or_slug ) ? array( 'id', 'slug' ) : array( 'slug' );
 
     global $wpdb;
     $listing_id = 0;
