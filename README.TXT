@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.7
 Tested up to: 4.1
-Last Updated: 2015-Jan-6
-Stable tag: tags/3.5.4
+Last Updated: 2015-Jan-7
+Stable tag: tags/3.5.5
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -34,11 +34,12 @@ Business Directory Plugin allows you to build local directories, business provid
 * Location based result filtering (using the Regions Module)
 * ZIP code radius searches (using the ZIP Search Module)
 * Assign features to paid or sticky listing plans to give users incentive to upgrade (using the Featured levels module)
-* Allow users to upload PDFs (using the File Upload Module) (NEW!)
+* Allow users to upload PDFs (using the File Upload Module)
 * Display Category Icons/Allow Parent-Child Category Navigation (using the Enhanced Category Module)
 * Manage attachments on listings (using the Attachments module, supports PDF, Text files, images)
 * Accept payments using Stripe (using the Stripe Gateway Module) (NEW!)
 * Accept payments using PayFast (using the PayFast Gateway Module) (NEW!)
+* Post claimable listings that other businesses can pay (or not) to claim (using the Claim Listings Module) (NEW!)
 
 For a complete and detailed list of features, please visit:  http://businessdirectoryplugin.com/features/
  
@@ -48,11 +49,13 @@ Please report any bugs you find via http://businessdirectoryplugin.com/support-f
 These are optional modules that you can use to enhance Business Directory Plugin's functionality and
 support future development:
 
+NEW! [Claim Listings Module](http://businessdirectoryplugin.com/downloads/claim-listings-module/?ref=wp)
+
 NEW! [PayFast Gateway Module](http://businessdirectoryplugin.com/downloads/payfast-payment-module/?ref=wp)
 
 NEW! [Stripe Gateway Module](http://businessdirectoryplugin.com/downloads/stripe-payment-module/?ref=wp)
 
-NEW! [File Upload Module](http://businessdirectoryplugin.com/downloads/file-attachments-module/?ref=wp)
+[File Upload Module](http://businessdirectoryplugin.com/downloads/file-attachments-module/?ref=wp)
 
 [Featured Levels Module](http://businessdirectoryplugin.com/downloads/featured-levels-module/?ref=wp)
 
@@ -108,8 +111,12 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+= Version 3.5.5 =
+* Fixed activation bug.
+* Claim Listings added.
+
 = Version 3.5.4 =
-* Improve "the_content" filter support.
+* Improved "the_content" filter support.
 * Add pagination support to the featured levels shortcode. 
 * Make category list responsive. 
 * Work around a WP bug related to importing categories with ampersands. 
