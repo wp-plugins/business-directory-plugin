@@ -5,7 +5,7 @@ Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,
 Requires at least: 3.7
 Tested up to: 4.1
 Last Updated: 2015-Feb-17
-Stable tag: tags/3.5.6
+Stable tag: tags/3.5.7
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -111,6 +111,9 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+= Version 3.5.7 =
+* Second emergency Yoast SEO patch to fix issue with get_content_title() API change (1.7.2 and higher in Yoast)
+
 = Version 3.5.6 =
 * Emergency Yoast SEO patch to fix issue with metadesc() API change (1.7.2 and higher in Yoast)
 
