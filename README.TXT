@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.7
 Tested up to: 4.1
-Last Updated: 2015-Jan-7
-Stable tag: tags/3.5.5
+Last Updated: 2015-Feb-17
+Stable tag: tags/3.5.6
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -111,6 +111,9 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+= Version 3.5.6 =
+* Emergency Yoast SEO patch to fix issue with metadesc() API change (1.7.2 and higher in Yoast)
+
 = Version 3.5.5 =
 * Fixed activation bug.
 * Claim Listings added.

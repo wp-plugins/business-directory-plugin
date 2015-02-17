@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.5.5
+ * Version: 3.5.6
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -30,7 +30,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.5.5' );
+define( 'WPBDP_VERSION', '3.5.6' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -1016,13 +1016,21 @@ class WPBDP_Plugin {
         $this->_do_wpseo = defined( 'WPSEO_VERSION' ) ? true : false;
 
         if ( $this->_do_wpseo ) {
-            global $wpseo_front;
+            $wpseo_front = null;
+
+            if ( isset( $GLOBALS['wpseo_front'] ) )
+                $wpseo_front = $GLOBALS['wpseo_front'];
+            elseif ( class_exists( 'WPSEO_Frontend' ) && method_exists( 'WPSEO_Frontend', 'get_instance' ) )
+                $wpseo_front = WPSEO_Frontend::get_instance();
 
             remove_filter( 'wp_title', array( $this, '_meta_title' ), 10, 3 );
             add_filter( 'wp_title', array( $this, '_meta_title' ), 16, 3 );
 
-            remove_filter( 'wp_title', array( &$wpseo_front, 'title' ), 15, 3 );
-            remove_action( 'wp_head', array( &$wpseo_front, 'head' ), 1, 1 );
+            if ( is_object( $wpseo_front ) ) {
+                remove_filter( 'wp_title', array( &$wpseo_front, 'title' ), 15, 3 );
+                remove_action( 'wp_head', array( &$wpseo_front, 'head' ), 1, 1 );
+            }
+
             add_action( 'wp_head', array( $this, '_meta_keywords' ) );
         }
 
@@ -1118,6 +1126,13 @@ class WPBDP_Plugin {
 
     // TODO: it'd be nice to move workarounds outside this class.
     public function _meta_title( $title = '', $sep = '»', $seplocation = 'right' ) {
+        $wpseo_front = null;
+
+        if ( isset( $GLOBALS['wpseo_front'] ) )
+            $wpseo_front = $GLOBALS['wpseo_front'];
+        elseif ( class_exists( 'WPSEO_Frontend' ) && method_exists( 'WPSEO_Frontend', 'get_instance' ) )
+            $wpseo_front = WPSEO_Frontend::get_instance();
+
         $action = $this->controller->get_current_action();
 
         switch ($action) {
@@ -1154,8 +1169,6 @@ class WPBDP_Plugin {
                 $term = get_term_by('slug', get_query_var('tag'), WPBDP_TAGS_TAX);
 
                 if ( $this->_do_wpseo ) {
-                    global $wpseo_front;
-
                     if ( method_exists( 'WPSEO_Taxonomy_Meta', 'get_term_meta' ) ) {
                         $title = WPSEO_Taxonomy_Meta::get_term_meta( $term, $term->taxonomy, 'title' );
                     } else {
@@ -1165,7 +1178,8 @@ class WPBDP_Plugin {
                     if ( !empty( $title ) )
                         return wpseo_replace_vars( $title, (array) $term );
 
-                    return $wpseo_front->get_title_from_options( 'title-tax-' . $term->taxonomy, $term );
+                    if ( is_object( $wpseo_front ) )
+                        return $wpseo_front->get_title_from_options( 'title-tax-' . $term->taxonomy, $term );
                 }
 
                 return sprintf( _x( 'Listings tagged: %s', 'title', 'WPBDM' ), $term->name ) . ' ' . $sep . ' ' . $title;
@@ -1177,8 +1191,6 @@ class WPBDP_Plugin {
                 if (!$term && get_query_var('category_id')) $term = get_term_by('id', get_query_var('category_id'), WPBDP_CATEGORY_TAX);
 
                 if ( $this->_do_wpseo ) {
-                    global $wpseo_front;
-
                     if ( method_exists( 'WPSEO_Taxonomy_Meta', 'get_term_meta' ) ) {
                         $title = WPSEO_Taxonomy_Meta::get_term_meta( $term, $term->taxonomy, 'title' );
                     } else {
@@ -1188,7 +1200,8 @@ class WPBDP_Plugin {
                     if ( !empty( $title ) )
                         return wpseo_replace_vars( $title, (array) $term );
 
-                    return $wpseo_front->get_title_from_options( 'title-tax-' . $term->taxonomy, $term );
+                    if ( is_object( $wpseo_front ) )
+                        return $wpseo_front->get_title_from_options( 'title-tax-' . $term->taxonomy, $term );
                 }
 
                 return $term->name . ' ' . $sep . ' ' . $title;
@@ -1199,8 +1212,6 @@ class WPBDP_Plugin {
                 $listing_id = get_query_var('listing') ? wpbdp_get_post_by_slug(get_query_var('listing'))->ID : wpbdp_getv($_GET, 'id', get_query_var('id'));
 
                 if ( $this->_do_wpseo ) {
-                    global $wpseo_front;
-
                     $title = $wpseo_front->get_content_title( get_post( $listing_id ) );
                     $title = esc_html( strip_tags( stripslashes( apply_filters( 'wpseo_title', $title ) ) ) );
 
@@ -1224,7 +1235,12 @@ class WPBDP_Plugin {
     }
 
     public function _meta_keywords() {
-        global $wpseo_front;
+        $wpseo_front = null;
+
+        if ( isset( $GLOBALS['wpseo_front'] ) )
+            $wpseo_front = $GLOBALS['wpseo_front'];
+        elseif ( class_exists( 'WPSEO_Frontend' ) && method_exists( 'WPSEO_Frontend', 'get_instance' ) )
+            $wpseo_front = WPSEO_Frontend::get_instance();
 
         $current_action = $this->controller->get_current_action();
 
@@ -1237,8 +1253,10 @@ class WPBDP_Plugin {
                 $prev_post = $post;
                 $post = get_post( $listing_id );
 
-                $wpseo_front->metadesc();
-                $wpseo_front->metakeywords();
+                if ( is_object( $wpseo_front ) ) {
+                    $wpseo_front->metadesc();
+                    $wpseo_front->metakeywords();
+                }
 
                 $post = $prev_post;
 
@@ -1256,7 +1274,8 @@ class WPBDP_Plugin {
                     $metadesc = method_exists( 'WPSEO_Taxonomy_Meta', 'get_term_meta' ) ?
                                 WPSEO_Taxonomy_Meta::get_term_meta( $term, $term->taxonomy, 'desc' ) :
                                 wpseo_get_term_meta( $term, $term->taxonomy, 'desc' );
-                    if ( !$metadesc && isset( $wpseo_front->options['metadesc-tax-' . $term->taxonomy] ) )
+
+                    if ( !$metadesc && is_object( $wpseo_front ) && isset( $wpseo_front->options['metadesc-tax-' . $term->taxonomy] ) )
                         $metadesc = wpseo_replace_vars( $wpseo_front->options['metadesc-tax-' . $term->taxonomy], (array) $term );
 
                     if ( $metadesc )
@@ -1266,8 +1285,10 @@ class WPBDP_Plugin {
                 break;
 
             case 'main':
-                $wpseo_front->metadesc();
-                $wpseo_front->metakeywords();
+                if ( is_object( $wpseo_front ) ) {
+                    $wpseo_front->metadesc();
+                    $wpseo_front->metakeywords();
+                }
 
                 break;
 
