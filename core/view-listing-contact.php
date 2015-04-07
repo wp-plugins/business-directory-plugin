@@ -114,7 +114,14 @@ class WPBDP_Listing_Contact_View extends WPBDP_View {
             return '';
 
         $html  = '';
+
         $html .= '<div class="contact-form">';
+
+        if ( ! $_POST ) {
+            $html .= '<input type="button" class="wpbdp-show-on-mobile send-message-button" value="' . _x( 'Contact listing owner', 'templates', 'WPBDM' ) . '" />';
+            $html .= '<div class="wpbdp-hide-on-mobile contact-form-wrapper">';
+        }
+
         $html .= '<h3>' . _x('Send Message to listing owner', 'templates', 'WPBDM') . '</h3>';
 
         $form = '';
@@ -131,6 +138,10 @@ class WPBDP_Listing_Contact_View extends WPBDP_View {
         }
 
         $html .= $form;
+
+        if ( ! $_POST )
+            $html .= '</div>';
+
         $html .= '</div>';
 
         return $html;
@@ -163,6 +174,7 @@ class WPBDP_Listing_Contact_View extends WPBDP_View {
         $email->from = "{$this->name} <{$this->email}>";
         $email->to = wpbusdirman_get_the_business_email( $listing_id );
         $email->reply_to = $this->email;
+        $email->template = 'businessdirectory-email';
 
         if ( in_array( 'listing-contact', wpbdp_get_option( 'admin-notifications' ), true ) ) {
             $email->cc[] = get_bloginfo( 'admin_email' );

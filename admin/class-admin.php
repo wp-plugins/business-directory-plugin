@@ -56,6 +56,7 @@ class WPBDP_Admin {
         add_action( 'wp_ajax_wpbdp-set_site_tracking', 'WPBDP_SiteTracking::handle_ajax_response' );
 
         $this->listings = new WPBDP_Admin_Listings();
+        $this->csv_import = new WPBDP_CSVImportAdmin();
         $this->csv_export = new WPBDP_Admin_CSVExport();
         $this->payments = new WPBDP_Admin_Payments();
         $this->debug_page = new WPBDP_Admin_Debug_Page();
@@ -263,24 +264,11 @@ class WPBDP_Admin {
                          'wpbdp_admin_formfields',
                          array('WPBDP_FormFieldsAdmin', 'admin_menu_cb'));
         add_submenu_page('wpbdp_admin',
-                         _x('All Listings', 'admin menu', 'WPBDM'),
-                         _x('All Listings', 'admin menu', 'WPBDM'),
+                         _x('Listings', 'admin menu', 'WPBDM'),
+                         _x('Listings', 'admin menu', 'WPBDM'),
                          'administrator',
                          'wpbdp_all_listings',
                          '__return_false');
-        add_submenu_page('wpbdp_admin',
-                         _x('Pending Upgrade', 'admin menu', 'WPBDM'),
-                         _x('Pending Upgrade', 'admin menu', 'WPBDM'),
-                         'administrator',
-                         'wpbdp_manage_featured',
-                         '__return_false');
-        add_submenu_page('wpbdp_admin',
-                         _x('Pending Payment', 'admin menu', 'WPBDM'),
-                         _x('Pending Payment', 'admin menu', 'WPBDM'),
-                         'administrator',
-                         'wpbdp_manage_payments',
-                         '__return_false');
-
         // if ( wpbdp_payments_api()->payments_possible() ) {
         //     add_submenu_page( 'wpbdp_admin',
         //                       _x( 'Transactions', 'admin menu', 'WPBDM' ),
@@ -290,12 +278,12 @@ class WPBDP_Admin {
         //                       array( 'WPBDP_TransactionsAdmin', 'admin_menu_cb' )
         //                     );
         // }
-        add_submenu_page('wpbdp_admin',
-                         _x('CSV Import', 'admin menu', 'WPBDM'),
-                         _x('CSV Import', 'admin menu', 'WPBDM'),
-                         'administrator',
-                         'wpbdp-csv-import',
-                         array('WPBDP_CSVImportAdmin', 'admin_menu_cb'));
+        add_submenu_page( 'wpbdp_admin',
+                          _x( 'CSV Import', 'admin menu', 'WPBDM' ),
+                          _x( 'CSV Import', 'admin menu', 'WPBDM' ),
+                          'administrator',
+                          'wpbdp-csv-import',
+                          array( &$this->csv_import, 'dispatch' ) );
         add_submenu_page( 'wpbdp_admin',
                           _x( 'CSV Export', 'admin menu', 'WPBDM' ),
                           _x( 'CSV Export', 'admin menu', 'WPBDM' ),
@@ -315,8 +303,6 @@ class WPBDP_Admin {
             $submenu['wpbdp_admin'][1][2] = admin_url(sprintf('post-new.php?post_type=%s', WPBDP_POST_TYPE));
             $submenu['wpbdp_admin'][0][0] = _x('Main Menu', 'admin menu', 'WPBDM');
             $submenu['wpbdp_admin'][5][2] = admin_url( 'edit.php?post_type=' . WPBDP_POST_TYPE );
-            $submenu['wpbdp_admin'][6][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', WPBDP_POST_TYPE, 'pendingupgrade'));
-            $submenu['wpbdp_admin'][7][2] = admin_url(sprintf('edit.php?post_type=%s&wpbdmfilter=%s', WPBDP_POST_TYPE, 'unpaid'));
         } elseif (current_user_can('contributor')) {
             $m = $submenu['edit.php?post_type=' . WPBDP_POST_TYPE];
             $keys = array_keys($m);
@@ -423,17 +409,20 @@ class WPBDP_Admin {
         $response = new WPBDP_Ajax_Response();
 
         $renewal_id = intval( isset( $_POST['renewal_id'] ) ? $_POST['renewal_id'] : 0 );
-        $expiration_time = isset( $_POST['expiration_date'] ) ? date( 'Y-m-d 00:00:00', strtotime( trim( $_POST['expiration_date'] ) ) ) : '';
+        $expiration_time = isset( $_POST['expiration_date'] ) ? ( 'never' == $_POST['expiration_date'] ? 'never' : date( 'Y-m-d 00:00:00', strtotime( trim( $_POST['expiration_date'] ) ) ) ) : '';
 
         if ( ! $renewal_id || ! $expiration_time || ! current_user_can( 'administrator' ) )
             $response->send_error();
 
         global $wpdb;
 
-        if ( $expiration_time )
+        if ( 'never' == $expiration_time ) {
+            $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}wpbdp_listing_fees SET expires_on = NULL, email_sent = %d WHERE id = %d", 0, $renewal_id ) );
+        } else {
             $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->prefix}wpbdp_listing_fees SET expires_on = %s, email_sent = %d WHERE id = %d", $expiration_time, 0, $renewal_id ) );
+        }
 
-        $response->add( 'formattedExpirationDate', date_i18n( get_option( 'date_format' ), strtotime( $expiration_time ) ) );
+        $response->add( 'formattedExpirationDate', 'never' == $expiration_time ? _x( 'never', 'admin infometabox', 'WPBDM' ) : date_i18n( get_option( 'date_format' ), strtotime( $expiration_time ) ) );
         $response->send();
     }
 
@@ -481,6 +470,7 @@ class WPBDP_Admin {
 
         $this->check_compatibility();
         $this->check_setup();
+        $this->check_ajax_compat_mode();
 
         foreach ($this->messages as $msg) {
             if (is_array($msg)) {
@@ -837,6 +827,21 @@ class WPBDP_Admin {
                     'error' );
             }
         }
+    }
+
+    public function check_ajax_compat_mode() {
+        global $pagenow;
+
+        if ( 'admin.php' != $pagenow || ! isset( $_GET['page'] ) || 'wpbdp_admin_settings' != $_GET['page'] )
+            return;
+
+        $notice = get_option( 'wpbdp-ajax-compat-mode-notice' );
+
+        if ( ! $notice )
+            return;
+
+        $this->messages[] = $notice;
+        delete_option( 'wpbdp-ajax-compat-mode-notice' );
     }
 
     public function main_menu() {

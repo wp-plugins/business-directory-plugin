@@ -442,7 +442,8 @@ body.taxonomy-wpbdp_category .column-id {
     background: green;
 }
 
-.tag.paymentstatus.pending {
+.tag.paymentstatus.pending,
+.tag.paymentstatus.pending-abandonment {
     background: red;
 }
 
@@ -558,6 +559,10 @@ body.taxonomy-wpbdp_category .column-id {
 
 #wpbdp-admin-settings .wpbdp-settings-email .editor .buttons .cancel {
     margin-right: 10px;
+}
+
+#wpbdp-admin-settings select#quick-search-fields {
+    min-height: 150px;
 }
 
 /* Listing metabox - Transactions. */

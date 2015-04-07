@@ -117,7 +117,7 @@ class WPBDP_Form_Field_Type {
     /**
      * @since 3.4.1
      */
-    public function convert_csv_input( &$field, $input = '' ) {
+    public function convert_csv_input( &$field, $input = '', $import_settings = array() ) {
         return $this->convert_input( $field, $input );
     }
 
@@ -161,7 +161,7 @@ class WPBDP_Form_Field_Type {
             case 'search':
                 $html .= sprintf( '<div class="wpbdp-search-filter %s %s" %s>',
                                   $field->get_field_type()->get_id(),
-                                  implode(' ', $field->css_classes ),
+                                  implode(' ', $field->get_css_classes( $render_context ) ),
                                   $this->html_attributes( $field->html_attributes ) );
                 $html .= sprintf( '<div class="label"><label>%s</label></div>', esc_html( apply_filters( 'wpbdp_render_field_label', $field->get_label(), $field ) ) );
                 $html .= '<div class="field inner">';

@@ -166,6 +166,7 @@ class WPBDP_DirectoryController {
         else
             $html .= $view;
 
+        wp_reset_query(); // Just in case some shortcode messed this up.
         return $html;
     }
 
@@ -199,24 +200,31 @@ class WPBDP_DirectoryController {
                       'terms' => $category_id)
             )
         ));
+        $q = $GLOBALS['wp_query'];
+        wpbdp_push_query( $q );
 
-        if ( is_array( $category_id ) || $in_listings_shortcode ) {
+        if ( is_array( $category_id ) ) {
             $title = '';
             $category = null;
         } else {
             $category = get_term( $category_id, WPBDP_CATEGORY_TAX );
             $title = esc_attr( $category->name );
+
+            if ( $in_listings_shortcode )
+                $title = '';
         }
 
         $html = wpbdp_render( 'category',
                              array(
                                 'title' => $title,
                                 'category' => $category,
-                                'is_tag' => false
+                                'is_tag' => false,
+                                'in_shortcode' => $in_listings_shortcode
                                 ),
                              false );
 
         wp_reset_query();
+        wpbdp_pop_query();
 
         return $html;
     }
@@ -243,6 +251,7 @@ class WPBDP_DirectoryController {
                       'terms' => $tag_id)
             )
         ));
+        wpbdp_push_query( $GLOBALS['wp_query'] );
 
         $html = wpbdp_render( 'category',
                              array(
@@ -250,15 +259,16 @@ class WPBDP_DirectoryController {
                                 'category' => $tag,
                                 'is_tag' => true
                                 ),
-                             false );        
+                             false );
 
         wp_reset_query();
+        wpbdp_pop_query();
 
         return $html;
     }    
 
     /* display listings */
-    public function view_listings($include_buttons=false) {
+    public function view_listings($include_buttons=false, $args_ = array()) {
         $paged = 1;
 
         if (get_query_var('page'))
@@ -266,22 +276,43 @@ class WPBDP_DirectoryController {
         elseif (get_query_var('paged'))
             $paged = get_query_var('paged');
 
-        query_posts(array(
+        $args = array(
             'post_type' => WPBDP_POST_TYPE,
             'posts_per_page' => wpbdp_get_option( 'listings-per-page' ) > 0 ? wpbdp_get_option( 'listings-per-page' ) : -1,
             'post_status' => 'publish',
             'paged' => intval($paged),
             'orderby' => wpbdp_get_option('listings-order-by', 'date'),
-            'order' => wpbdp_get_option('listings-sort', 'ASC')
-        ));
+            'order' => wpbdp_get_option('listings-sort', 'ASC'),
+        );
+        if ( isset( $args_['numberposts'] ) )
+            $args['numberposts'] = $args_['numberposts'];
+
+        // See if we need to call query_posts() directly in case the user is using the template without
+        // the $query argument.
+        $template = file_get_contents( wpbdp_locate_template( 'businessdirectory-listings' ) );
+        $compat = ( false === stripos( $template, '$query->the_post' ) ) ? true : false;
+
+        if ( $compat ) {
+            query_posts( $args );
+            $q = $GLOBALS['wp_query'];
+        } else {
+            $q = new WP_Query( $args );
+        }
+
+        wpbdp_push_query( $q );
 
         $html = wpbdp_capture_action( 'wpbdp_before_viewlistings_page' );
         $html .= wpbdp_render('businessdirectory-listings', array(
+                'query' => $q,
                 'excludebuttons' => !$include_buttons
             ), true);
         $html .= wpbdp_capture_action( 'wpbdp_after_viewlistings_page' );
 
+        if ( ! $compat )
+            wp_reset_postdata();
+
         wp_reset_query();
+        wpbdp_pop_query( $q );
 
         return $html;
     }
@@ -307,12 +338,14 @@ class WPBDP_DirectoryController {
                 array( 'key' => '_wpbdp[sticky]', 'value' => 'sticky' )
             )
         ) );
+        wpbdp_push_query( $GLOBALS['wp_query'] );
 
         $html  = '';
         $html .= wpbdp_render( 'businessdirectory-listings' );
 
         $wp_query = $old_query;
         wp_reset_query();
+        wpbdp_pop_query();
 
         return $html;
     }
@@ -391,14 +424,17 @@ class WPBDP_DirectoryController {
                 'post_status' => 'publish',
                 'paged' => get_query_var('paged') ? get_query_var('paged') : 1
             ));
+            wpbdp_push_query( $GLOBALS['wp_query'] );
         }
 
         $html = wpbdp_render('manage-listings', array(
             'current_user' => $current_user
             ), false);
 
-        if ($current_user)
+        if ($current_user) {
             wp_reset_query();
+            wpbdp_pop_query();
+        }
 
         return $html;
     }
@@ -448,6 +484,7 @@ class WPBDP_DirectoryController {
         );
         $args = apply_filters( 'wpbdp_search_query_posts_args', $args, $search_args );
         query_posts( $args );
+        wpbdp_push_query( $GLOBALS['wp_query'] );
 
         $html = wpbdp_render( 'search',
                                array( 
@@ -457,6 +494,7 @@ class WPBDP_DirectoryController {
                                     ),
                               false );
         wp_reset_query();
+        wpbdp_pop_query();
 
         return $html;
     }

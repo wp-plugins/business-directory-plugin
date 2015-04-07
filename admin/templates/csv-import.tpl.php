@@ -1,11 +1,36 @@
 <?php
-echo wpbdp_admin_header(null, null, array(
+function _defaults_or( $defs, $k, $v ) {
+    if ( array_key_exists( $k, $defs ) )
+        return $defs[ $k ];
+
+    return $v;
+}
+?>
+
+<?php
+echo wpbdp_admin_header(null, 'csv-import', array(
     array(_x('Help', 'admin csv-import', 'WPBDM'), '#help'),
     array(_x('See an example CSV import file', 'admin csv-import', 'WPBDM'), esc_url(add_query_arg('action', 'example-csv')))
     ) );
 ?>
 
 <?php wpbdp_admin_notices(); ?>
+
+<div class="wpbdp-note">
+<p><?php
+_ex( 'Here, you can import data into your directory using the CSV format.',
+     'admin csv-import',
+     'WPBDM' );
+?><br />
+<?php
+echo str_replace(
+    '<a>',
+    '<a href="http://businessdirectoryplugin.com/docs/#admin-import" target="_blank">',
+    _x( 'We strongly recommend reading our <a>CSV import documentation</a> first to help you do things in the right order.',
+        'admin csv-import',
+        'WPBDM' ) );
+?></p>
+</div>
 
 <form id="wpbdp-csv-import-form" action="" method="POST" enctype="multipart/form-data">
     <input type="hidden" name="action" value="do-import" />
@@ -15,12 +40,33 @@ echo wpbdp_admin_header(null, null, array(
         <tbody>
             <tr class="form-field form-required">
                 <th scope="row">
-                    <label> <?php _ex('CSV File', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex('required', 'admin forms'); ?>)</span></label>
+                    <label> <?php _ex('CSV File', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex( 'required', 'admin forms', 'WPBDM' ); ?>)</span></label>
                 </th>
                 <td>
                     <input name="csv-file"
                            type="file"
                            aria-required="true" />
+
+                    <?php if ( $files['csv'] ): ?>
+                    <div class="file-local-selection">
+                        <?php
+                        echo str_replace( '<a>',
+                                          '<a href="#" class="toggle-selection">',
+                                          _x( '... or <a>select a file uploaded to the imports folder</a>', 'admin csv-import', 'WPBDM' ) );
+                        ?>
+
+                        <ul>
+                            <?php foreach ( $files['csv'] as $f ): ?>
+                            <li><label>
+                                <input type="radio" name="csv-file-local" value="<?php echo basename( $f ); ?>" /> <?php echo basename( $f ); ?>
+                            </label></li>
+                            <?php endforeach; ?>
+                            <li>
+                                <label><input type="radio" name="csv-file-local" value="" class="dismiss" /> <?php _ex( '(Upload new file)', 'admin csv-import', 'WPBDM' ); ?></label>
+                            </li>
+                        </ul>
+                    </div>
+                    <?php endif; ?>
                 </td>
             </tr>
             <tr class="form-field">
@@ -31,21 +77,42 @@ echo wpbdp_admin_header(null, null, array(
                     <input name="images-file"
                            type="file"
                            aria-required="true" />
+
+                    <?php if ( $files['images'] ): ?>
+                    <div class="file-local-selection">
+                        <?php
+                        echo str_replace( '<a>',
+                                          '<a href="#" class="toggle-selection">',
+                                          _x( '... or <a>select a file uploaded to the imports folder</a>', 'admin csv-import', 'WPBDM' ) );
+                        ?>
+
+                        <ul>
+                            <?php foreach ( $files['images'] as $f ): ?>
+                            <li><label>
+                                <input type="radio" name="images-file-local" value="<?php echo basename( $f ); ?>" /> <?php echo basename( $f ); ?>
+                            </label></li>
+                            <?php endforeach; ?>
+                            <li>
+                                <label><input type="radio" name="images-file-local" value="" class="dismiss" /> <?php _ex( '(Upload new file)', 'admin csv-import', 'WPBDM' ); ?></label>
+                            </li>
+                        </ul>
+                    </div>
+                    <?php endif; ?>
                 </td>
-            </tr>            
+            </tr>
     </table>
 
     <h3><?php _ex('CSV File Settings', 'admin csv-import', 'WPBDM'); ?></h3>
     <table class="form-table">
             <tr class="form-required">
                 <th scope="row">
-                    <label> <?php _ex('Column Separator', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex('required', 'admin forms'); ?>)</span></label>
+                    <label> <?php _ex('Column Separator', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex( 'required', 'admin forms', 'WPBDM' ); ?>)</span></label>
                 </th>
                 <td>
                     <input name="settings[csv-file-separator]"
                            type="text"
                            aria-required="true"
-                           value="," />
+                           value="<?php echo _defaults_or( $defaults, 'csv-file-separator', ',' ); ?>" />
                 </td>
             </tr>
             <tr class="form-required">
@@ -56,7 +123,7 @@ echo wpbdp_admin_header(null, null, array(
                     <input name="settings[images-separator]"
                            type="text"
                            aria-required="true"
-                           value=";" />
+                           value="<?php echo _defaults_or( $defaults, 'images-separator', ';' ); ?>" />
                 </td>
             </tr>
             <tr class="form-required">
@@ -67,36 +134,36 @@ echo wpbdp_admin_header(null, null, array(
                     <input name="settings[category-separator]"
                            type="text"
                            aria-required="true"
-                           value=";" />
+                           value="<?php echo _defaults_or( $defaults, 'category-separator', ';' ); ?>" />
                 </td>
             </tr>
     </table>
 
     <h3><?php _ex('Import settings', 'admin csv-import', 'WPBDM'); ?></h3>
     <table class="form-table">
-<!--            <tr class="form-required">
-                <th scope="row">
-                    <label> <?php _ex('Allow partial imports?', 'admin csv-import', 'WPBDM'); ?></label>
-                </th>
-                <td>
-                    <label><input name="settings[allow-partial-imports]"
-                           type="checkbox"
-                           value="1" checked="checked" /> <?php _ex('Allow partial imports.', 'admin csv-import', 'WPBDM'); ?></label>
-
-                    <span class="description"><?php _ex('If checked, invalid lines from the CSV file will be ignored.', 'admin csv-import', 'WPBDM'); ?></span>
-                </td>
-            </tr>    -->    
             <tr class="form-required">
                 <th scope="row">
-                    <label> <?php _ex('Missing categories handling', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex('required', 'admin forms'); ?>)</span></label>
+                    <label> <?php _ex('Post status of imported listings', 'admin csv-import', 'WPBDM'); ?></label>
+                </th>
+                <td>
+                    <select name="settings[post-status]">
+                        <?php foreach ( get_post_statuses() as $post_status => $post_status_label ): ?>
+                        <option value="<?php echo $post_status; ?>" <?php echo _defaults_or( $defaults, 'post-status', 'publish' ) == $post_status ? 'selected="selected"' : ''; ?>><?php echo $post_status_label; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </td>
+            </tr>
+            <tr class="form-required">
+                <th scope="row">
+                    <label> <?php _ex('Missing categories handling', 'admin csv-import', 'WPBDM'); ?> <span class="description">(<?php _ex( 'required', 'admin forms', 'WPBDM' ); ?>)</span></label>
                 </th>
                 <td>
                     <label><input name="settings[create-missing-categories]"
                            type="radio"
-                           value="1" checked="checked" /> <?php _ex('Auto-create categories', 'admin csv-import', 'WPBDM'); ?></label>
+                           value="1" <?php echo ( _defaults_or( $defaults, 'create-missing-categories', 1 ) == 1 ) ? 'checked="checked"' : ''; ?> /> <?php _ex('Auto-create categories', 'admin csv-import', 'WPBDM'); ?></label>
                     <label><input name="settings[create-missing-categories]"
                            type="radio"
-                           value="0" /> <?php _ex('Generate errors when a category is not found', 'admin csv-import', 'WPBDM'); ?></label>                           
+                           value="0" <?php echo ( _defaults_or( $defaults, 'create-missing-categories', 1 ) == 0 ) ? 'checked="checked"' : ''; ?> /> <?php _ex('Generate errors when a category is not found', 'admin csv-import', 'WPBDM'); ?></label>                           
                 </td>
             </tr>
             <tr class="form-required">
@@ -107,25 +174,35 @@ echo wpbdp_admin_header(null, null, array(
                     <label><input name="settings[assign-listings-to-user]"
                            type="checkbox"
                            class="assign-listings-to-user"
-                           value="1" checked="checked" /> <?php _ex('Assign listings to a user.', 'admin csv-import', 'WPBDM'); ?></label>
+                           value="1" <?php echo _defaults_or( $defaults, 'assign-listings-to-user', 1 ) ? 'checked="checked"' : ''; ?> /> <?php _ex('Assign listings to a user.', 'admin csv-import', 'WPBDM'); ?></label>
                 </td>
             </tr>
             <tr class="form-required default-user-selection">
                 <th scope="row">
-                    <label> <?php _ex('Default listing user', 'admin csv-import', 'WPBDM'); ?>
+                    <label> <?php _ex('Default listing user', 'admin csv-import', 'WPBDM'); ?></label>
                 </th>
                 <td>
                     <label>
                         <select name="settings[default-user]" class="default-user">
                             <option value="0"><?php _ex('Use spreadsheet information only.', 'admin csv-import', 'WPBDM'); ?></option>
                             <?php foreach (get_users('orderby=display_name') as $user): ?>
-                            <option value="<?php echo $user->ID; ?>"><?php echo $user->display_name; ?> (<?php echo $user->user_login; ?>)</option>
+                            <option value="<?php echo $user->ID; ?>" <?php echo ( _defaults_or( $defaults, 'default-user', '' ) == $user->ID ) ? 'selected="selected"' : ''; ?> ><?php echo $user->display_name; ?> (<?php echo $user->user_login; ?>)</option>
                             <?php endforeach; ?>
                         </select>
                     </label>
                     <span class="description"><?php _ex('This user will be used if the username column is not present in the CSV file.', 'admin csv-import', 'WPBDM'); ?></span>
                 </td>
-            </tr>            
+            </tr>
+            <tr class="form-required">
+                <th scope="row">
+                    <label> <?php _ex( 'Disable e-mail notifications during import?', 'admin csv-import', 'WPBDM' ); ?>
+                </th>
+                <td>
+                    <label><input name="settings[disable-email-notifications]"
+                           type="checkbox"
+                           value="1" checked="checked" /> <?php _ex( 'Disable e-mail notifications.', 'admin csv-import', 'WPBDM' ); ?></label>
+                </td>
+            </tr>
     </table>
 
     <p class="submit">

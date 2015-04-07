@@ -42,7 +42,8 @@ class WPBDP_Settings {
                             'permalinks-no-id',
                             _x( 'Remove listing ID from directory URLs?', 'admin settings', 'WPBDM' ),
                             'boolean',
-                            false );
+                            false,
+                            _x( 'Prior to 3.5.1, we included the ID in the listing URL, like "/business-directory/1809/listing-title". Check this setting to remove the ID for better SEO.', 'admin settings', 'WPBDM' ) );
 
         $s = $this->add_section( $g,
                                  'recaptcha',
@@ -100,7 +101,7 @@ class WPBDP_Settings {
         $desc .= '<span class="text-fields-warning wpbdp-note" style="display: none;">';
         $desc .= _x( 'You have selected a textarea field to be included in quick searches. Searches involving those fields are very expensive and could result in timeouts and/or general slowness.', 'admin settings', 'WPBDM' );
         $desc .= '</span>';
-        $desc .= _x( 'Choosing too many fields for inclusion into Quick Search can result in very slow search performance.', 'admin settings', 'WPBDM' );
+        $desc .= _x( 'Use Ctrl-Click to include multiple fields in the search. Choosing too many fields for inclusion into Quick Search can result in very slow search performance.', 'admin settings', 'WPBDM' );
         $this->add_setting( $s,
                             'quick-search-fields',
                             _x( 'Quick search fields', 'admin settings', 'WPBDM' ),
@@ -109,12 +110,32 @@ class WPBDP_Settings {
                             $desc,
                             array( 'choices' => array( &$this, 'quicksearch_fields_cb' ), 'use_checkboxes' => false, 'multiple' => true )
                          );
+        $this->add_setting( $s,
+                            'quick-search-enable-performance-tricks',
+                            _x( 'Enable high performance searches?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false,
+                            _x( 'Enabling this makes BD sacrifice result quality to improve speed. This is helpful if you\'re on shared hosting plans, where database performance is an issue.', 'admin settings', 'WPBDM' ) );
         // }}
 
         // Misc. settings.
 
         $s = $this->add_section($g, 'misc', _x('Miscellaneous Settings', 'admin settings', 'WPBDM'));
-        $this->add_setting($s, 'hide-tips', _x('Hide tips for use and other information?', 'admin settings', 'WPBDM'), 'boolean', false);
+        // $this->add_setting($s, 'hide-tips', _x('Hide tips for use and other information?', 'admin settings', 'WPBDM'), 'boolean', false);
+
+        $desc  = '';
+        $desc .= _x( 'Check this if you are having trouble with BD, particularly when importing or exporting CSV files.', 'admin settings', 'WPBDM' );
+        $desc .=str_replace( '<a>',
+                             '<a href="http://businessdirectoryplugin.com/support-forum/faq/how-to-check-for-plugin-and-theme-conflicts-with-bd/" target="_blank">',
+                             _x( 'If this compatibility mode doesn\'t solve your issue, you may be experiencing a more serious conflict. <a>Here is an article</a> about how to test for theme and plugin conflicts with Business Directory.', 'admin settings', 'WPBDM' ) );
+        $this->add_setting( $s,
+                            'ajax-compat-mode',
+                            _x( 'Enable AJAX compatibility mode?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false,
+                            $desc,
+                            null,
+                            array( &$this, 'setup_ajax_compat_mode' ) );
 
         /* Listings settings */
         $g = $this->add_group('listings', _x('Listings', 'admin settings', 'WPBDM'));
@@ -360,6 +381,34 @@ class WPBDP_Settings {
                                                             'date' => 'Date and time the message was sent' ) ) );
 
         $s = $this->add_section( $g,
+                                 'email-payments',
+                                 _x( 'Payment related', 'admin settings', 'WPBDM' ) );
+        $body_template = <<<EOF
+Hi there,
+
+We noticed that you tried submitting a listing on [site-link] but didn't finish
+the process.  If you want to complete the payment and get your listing
+included, just click here to continue:
+
+[link]
+
+If you have any issues, please contact us directly by hitting reply to this
+email!
+
+Thanks,
+- The Administrator of [site-title]
+EOF;
+        $this->add_setting( $s,
+                            'email-templates-payment-abandoned', _x( 'Payment abandoned reminder message', 'admin settings', 'WPBDM' ),
+                            'email_template',
+                            array( 'subject' => '[[site-title]] Pending payment for "[listing]"',
+                                   'body' => $body_template ),
+                            _x( 'Sent some time after a pending payment is abandoned by users.', 'admin settings', 'WPBDM' ),
+                            array( 'placeholders' => array( 'listing' => _x( 'Listing\'s title', 'admin settings', 'WPBDM' ),
+                                                            'link' => _x( 'Checkout URL link', 'admin settings', 'WPBDM' ) ) )
+                          );
+
+        $s = $this->add_section( $g,
                                  'email-renewal-reminders',
                                  _x( 'Renewal Reminders', 'admin settings', 'WPBDM' ),
                                  str_replace( '<a>',
@@ -488,10 +537,31 @@ class WPBDP_Settings {
                         _x('Thank you for your payment. Your payment is being verified and your listing reviewed. The verification and review process could take up to 48 hours.', 'admin settings', 'WPBDM'));
         $this->register_dep( 'payment-message', 'requires-true', 'payments-on' );
 
+        $this->add_setting( $s,
+                            'payment-abandonment',
+                            _x( 'Ask users to come back for abandoned payments?', 'admin settings', 'WPBDM' ),
+                            'boolean',
+                            false,
+                            _x( 'An abandoned payment is when a user attempts to place a listing and gets to the end, but fails to complete their payment for the listing. This results in listings that look like they failed, when the user simply didn\'t complete the transaction.  BD can remind them to come back and continue.', 'admin settings', 'WPBDM' )
+                );
+
+        $this->register_dep( 'payment-abandonment', 'requires-true', 'payments-on' );
+        $this->add_setting( $s,
+                            'payment-abandonment-threshold',
+                            _x( 'Listing abandonment threshold (hours)', 'admin settings', 'WPBDM' ),
+                            'text',
+                            '24',
+                            str_replace( '<a>',
+                                         '<a href="' . admin_url( 'admin.php?page=wpbdp_admin_settings&groupid=email' ) . '#email-templates-payment-abandoned">',
+                                         _x( 'Listings with pending payments are marked as abandoned after this time. You can also <a>customize the e-mail</a> users receive.', 'admin settings', 'WPBDM' )
+                                        ) );
+        $this->register_dep( 'payment-abandonment-threshold', 'requires-true', 'payment-abandonment' );
+
+
         /* Registration settings */
         $g = $this->add_group('registration', _x('Registration', 'admin settings', 'WPBDM'));
         $s = $this->add_section($g, 'registration', _x('Registration Settings', 'admin settings', 'WPBDM'));
-        $this->add_setting($s, 'require-login', _x('Require login?', 'admin settings', 'WPBDM'), 'boolean', true);
+        $this->add_setting($s, 'require-login', _x('Require login to post listings?', 'admin settings', 'WPBDM'), 'boolean', true);
         //$this->add_setting($s, 'login-url', _x('Login URL', 'admin settings', 'WPBDM'), 'text', wp_login_url()); // deprecated as of 2.1
         // deprecated as of 2.1, added again for 3.4
         $this->add_setting( $s,
@@ -507,12 +577,28 @@ class WPBDP_Settings {
                                _x( 'Any changes to these settings will affect new listings only.  Existing listings will not be affected.  If you wish to change existing listings, you will need to re-upload the image(s) on that listing after changing things here.', 'admin settings', 'WPBDM' ) );
         $s = $this->add_section($g, 'image', _x('Image Settings', 'admin settings', 'WPBDM'));
         $this->add_setting($s, 'allow-images', _x('Allow images?', 'admin settings', 'WPBDM'), 'boolean', true);
+
+        $this->add_setting($s, 'image-min-filesize', _x('Min Image File Size (KB)', 'admin settings', 'WPBDM'), 'text', '0' );
         $this->add_setting($s, 'image-max-filesize', _x('Max Image File Size (KB)', 'admin settings', 'WPBDM'), 'text', '10000');
-        // $this->add_setting($s, 'image-min-filesize', _x('Minimum Image File Size (KB)', 'admin settings', 'WPBDM'), 'text', '50');
-        $this->add_setting($s, 'image-max-width', _x('Max image width', 'admin settings', 'WPBDM'), 'text', '500');
-        $this->add_setting($s, 'image-max-height', _x('Max image height', 'admin settings', 'WPBDM'), 'text', '500');
-        $this->add_setting($s, 'thumbnail-width', _x('Thumbnail width', 'admin settings', 'WPBDM'), 'text', '150');
+
+        $this->add_setting($s, 'image-min-width', _x( 'Min image width (px)', 'admin settings', 'WPBDM'), 'text', '0' );
+        $this->add_setting($s, 'image-min-height', _x( 'Min image height (px)', 'admin settings', 'WPBDM'), 'text', '0' );
+
+        $this->add_setting($s, 'image-max-width', _x('Max image width (px)', 'admin settings', 'WPBDM'), 'text', '500');
+        $this->add_setting($s, 'image-max-height', _x('Max image height (px)', 'admin settings', 'WPBDM'), 'text', '500');
+
         $this->add_setting( $s, 'use-thickbox', _x( 'Turn on thickbox/lightbox?', 'admin settings', 'WPBDM' ), 'boolean', false, _x( 'Uncheck if it conflicts with other elements or plugins installed on your site', 'admin settings', 'WPBDM' ) );
+
+        $s = $this->add_section( $g, 'image/thumbnails', _x( 'Thumbnails', 'admin settings', 'WPBDM' ) );
+        $this->add_setting($s, 'thumbnail-width', _x('Thumbnail width (px)', 'admin settings', 'WPBDM'), 'text', '150');
+        $this->add_setting($s, 'thumbnail-height', _x('Thumbnail height (px)', 'admin settings', 'WPBDM'), 'text', '150');
+        $this->add_setting( $s,
+                            'thumbnail-crop',
+                            _x( 'Crop thumbnails to exact dimensions?', 'admin settings', 'WPBDM'),
+                            'boolean',
+                            false,
+                            _x( 'When enabled images will match exactly the dimensions above but part of the image may be cropped out. If disabled, image thumbnails will be resized to match the specified width and their height will be adjusted proportionally. Depending on the uploaded images, thumbnails may have different heights.', 'admin settings', 'WPBDM' )
+                           );
 
         $s = $this->add_section($g, 'listings', _x('Listings', 'admin settings', 'WPBDM'));
         $this->add_setting( $s,
@@ -563,6 +649,55 @@ class WPBDP_Settings {
 
     public function _validate_listings_permalink($setting, $newvalue, $oldvalue=null) {
         return trim(str_replace(' ', '', $newvalue));
+    }
+
+    public function setup_ajax_compat_mode( $setting, $newvalue, $oldvalue = null ) {
+        if ( $newvalue == $oldvalue )
+            return;
+
+        $mu_dir = ( defined( 'WPMU_PLUGIN_DIR' ) && defined( 'WPMU_PLUGIN_URL' ) ) ? WPMU_PLUGIN_DIR : trailingslashit( WP_CONTENT_DIR ) . 'mu-plugins';
+        $source = WPBDP_PATH . 'core/compatibility/wpbdp-ajax-compat-mu.php';
+        $dest   = trailingslashit( $mu_dir ) . basename( $source );
+
+        $message = false;
+        $install = (bool) $newvalue;
+
+        if ( $install ) {
+            // Install plugin.
+            if ( wp_mkdir_p( $mu_dir ) ) {
+                if ( ! copy( $source, $dest ) ) {
+                    $message = array( sprintf( _x( 'Could not copy the AJAX compatibility plugin "%s". Compatibility mode was not activated.', 'admin settings', 'WPBDM' ),
+                                               $dest ),
+                                      'error' );
+                    $newvalue = $oldvalue;
+                }/* else {
+                    $message = _x( 'AJAX compatibility mode activated. "Business Directory Plugin - AJAX Compatibility Module" was installed.', 'admin settings', 'WPBDM' );
+                }*/
+            } else {
+                $message = array( sprintf( _x( 'Could not activate AJAX Compatibility mode: the directory "%s" could not be created.', 'admin settings', 'WPBDM' ),
+                                           $mu_dir ),
+                                  'error' );
+                $newvalue = $oldvalue;
+            }
+        } else {
+            // Uninstall.
+            if ( file_exists( $dest ) && ! unlink( $dest ) ) {
+                $message = array(
+                    sprintf( _x( 'Could not remove the "Business Directory Plugin - AJAX Compatibility Module". Please remove the file "%s" manually or deactivate the plugin.',
+                                 'admin settings',
+                                 'WPBDM' ),
+                             $dest ),
+                    'error'
+                );
+
+                $newvalue = $oldvalue;
+            }
+        }
+
+        if ( $message )
+            update_option( 'wpbdp-ajax-compat-mode-notice', $message );
+
+        return $newvalue;
     }
 
     public function _validate_term_permalink($setting, $newvalue, $oldvalue=null) {
@@ -878,7 +1013,7 @@ class WPBDP_Settings {
             }
             $placeholders_text = substr( $placeholders_text, 0, -2 ) . '.';
 
-            $setting->help_text = sprintf( _x( 'Valid placeholders: %s', 'admin settings', 'WPBDM' ),
+            $setting->help_text = ( $help_text_original ? $help_text_original . '<br  />' : '' ) . sprintf( _x( 'Valid placeholders: %s', 'admin settings', 'WPBDM' ),
                                            $placeholders_text );
         }
 
@@ -1109,8 +1244,10 @@ class WPBDP_Settings {
             foreach ($group->sections as $section) {
                 $callback = create_function('', 'echo "<a name=\"' . $section->slug . '\"></a>";');
 
-                if ($section->help_text)
-                    $callback = create_function('', 'echo "<p class=\"description\">' . addslashes( $section->help_text ) . '</p>";');
+                if ($section->help_text) {
+                    $t = addslashes( $section->help_text );
+                    $callback = create_function( '', 'echo \'<p class="description">' . $t . '</p>\';' );
+                }
 
                 add_settings_section($section->slug, $section->name, $callback, $group->wpslug);
 

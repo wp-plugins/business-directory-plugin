@@ -1,4 +1,5 @@
 <?php
+require_once( WPBDP_PATH . 'core/gateways-authorize-net.php' );
 require_once( WPBDP_PATH . 'core/class-payment.php' );
 
 /*
@@ -249,11 +250,17 @@ class WPBDP_PaymentsAPI {
 
     public function __construct() {
         $this->gateways = array();
+        $this->register_gateway( 'authorize-net', 'WPBDP_Authorize_Net_Gateway' );
 
         do_action_ref_array( 'wpbdp_register_gateways', array( &$this ) );
         add_action( 'wpbdp_register_settings', array( &$this, 'register_gateway_settings' ) );
-
         add_action( 'WPBDP_Payment::set_payment_method', array( &$this, 'gateway_payment_setup' ), 10, 2 );
+
+        // Listing abandonment.
+        add_filter( 'WPBDP_Listing::get_payment_status', array( &$this, 'abandonment_status' ), 10, 2 );
+        add_filter( 'wpbdp_admin_directory_views', array( &$this, 'abandonment_admin_views' ), 10, 2 );
+        add_filter( 'wpbdp_admin_directory_filter', array( &$this, 'abandonment_admin_filter' ), 10, 2 );
+
         //add_action( 'WPBDP_Payment::status_change', array( &$this, 'payment_notification' ) );
 //        add_action( 'WPBDP_Payment::before_save', array( &$this, 'gateway_payment_save' ) );
     }
@@ -525,6 +532,27 @@ class WPBDP_PaymentsAPI {
             $this->gateways[ $gateway_id ]->process( $payment, $action );
     }
 
+    /**
+     * @since 3.5.8
+     */
+    public function process_recurring_expiration( $payment_id = 0 ) {
+        $payment = WPBDP_Payment::get( $payment_id );
+
+        if ( ! $payment || ! $payment->is_completed() )
+            return;
+
+        $gateway = $payment->get_gateway();
+        if ( ! $this->is_available( $gateway ) )
+            return;
+
+        $gateway = $this->gateways[ $gateway ];
+
+        if ( ! $gateway->has_capability( 'handles-expiration' ) )
+            return;
+
+        $gateway->handle_expiration( $payment );
+    }
+
     public function render_unsubscribe_integration( &$category, &$listing ) {
         global $wpdb;
 
@@ -662,6 +690,155 @@ class WPBDP_PaymentsAPI {
 //
 //        wpbdp_debug_e( $payment );
 //    }
+
+
+    /**
+     * @since 3.5.8
+     */
+    public function abandonment_status( $status, $listing_id ) {
+        // For now, we only consider abandonment if it involves listings with pending INITIAL payments.
+        if ( 'pending' != $status || ! $listing_id || ! wpbdp_get_option( 'payment-abandonment' ) )
+            return $status;
+
+        $last_pending = WPBDP_Payment::find( array( 'listing_id' => $listing_id, 'status' => 'pending', '_single' => true, '_order' => '-created_on' ), true );
+
+        if ( ! $last_pending || 'initial' != $last_pending['tag'] )
+            return $status;
+
+        $threshold = max( 1, absint( wpbdp_get_option( 'payment-abandonment-threshold' ) ) );
+        $hours_elapsed = ( current_time( 'timestamp' ) - strtotime( $last_pending['created_on'] ) ) / ( 60 * 60 );
+
+        if ( $hours_elapsed <= 0 )
+            return $status;
+
+        if ( $hours_elapsed >= ( 2 * $threshold ) ) {
+            return 'payment-abandoned';
+        } elseif ( $hours_elapsed >= $threshold ) {
+            return 'pending-abandonment';
+        }
+
+        return $status;
+    }
+
+    /**
+     * @since 3.5.8
+     */
+    public function abandonment_admin_views( $views, $post_statuses ) {
+        global $wpdb;
+
+        if ( ! wpbdp_get_option( 'payment-abandonment' ) )
+            return $views;
+
+        $threshold = max( 1, absint( wpbdp_get_option( 'payment-abandonment-threshold' ) ) );
+        $now = current_time( 'timestamp' );
+
+        $within_pending = wpbdp_format_time( strtotime( sprintf( '-%d hours', $threshold ), $now ), 'mysql' );
+        $within_abandonment = wpbdp_format_time( strtotime( sprintf( '-%d hours', $threshold * 2 ), $now ), 'mysql' );
+
+        $count_pending = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}wpbdp_payments ps LEFT JOIN {$wpdb->posts} p ON p.ID = ps.listing_id WHERE ps.created_on > %s AND ps.created_on <= %s AND ps.status = %s AND ps.tag = %s AND p.post_status IN ({$post_statuses})",
+            $within_abandonment,
+            $within_pending,
+            'pending',
+            'initial'
+        ) );
+        $count_abandoned = $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}wpbdp_payments ps LEFT JOIN {$wpdb->posts} p ON p.ID = ps.listing_id WHERE ps.created_on <= %s AND ps.status = %s AND ps.tag = %s AND p.post_status IN ({$post_statuses})",
+            $within_abandonment,
+            'pending',
+            'initial'
+        ) );
+
+        $views['pending-abandonment'] = sprintf( '<a href="%s" class="%s">%s</a> <span class="count">(%s)</span></a>',
+                                                 add_query_arg( 'wpbdmfilter', 'pending-abandonment' ),
+                                                 'pending-abandonment' == wpbdp_getv( $_REQUEST, 'wpbdmfilter' ) ? 'current' : '',
+                                                 _x( 'Pending Abandonment', 'admin', 'WPBDM' ),
+                                                 number_format_i18n( $count_pending ) );
+        $views['abandoned'] = sprintf( '<a href="%s" class="%s">%s</a> <span class="count">(%s)</span></a>',
+                                        add_query_arg( 'wpbdmfilter', 'abandoned' ),
+                                        'abandoned' == wpbdp_getv( $_REQUEST, 'wpbdmfilter' ) ? 'current' : '',
+                                        _x( 'Abandoned', 'admin', 'WPBDM' ),
+                                        number_format_i18n( $count_abandoned ) );
+
+        return $views;
+    }
+
+    /**
+     * @since 3.5.8
+     */
+    public function abandonment_admin_filter( $pieces, $filter = '' ) {
+        if ( ! wpbdp_get_option( 'payment-abandonment' ) || 
+             ! in_array( $filter, array( 'abandoned', 'pending-abandonment' ), true ) )
+            return $pieces;
+
+        global $wpdb;
+
+        // TODO: move this code elsewhere since it is used in several places.
+        $threshold = max( 1, absint( wpbdp_get_option( 'payment-abandonment-threshold' ) ) );
+        $now = current_time( 'timestamp' );
+
+        $within_pending = wpbdp_format_time( strtotime( sprintf( '-%d hours', $threshold ), $now ), 'mysql' );
+        $within_abandonment = wpbdp_format_time( strtotime( sprintf( '-%d hours', $threshold * 2 ), $now ), 'mysql' );
+
+        $pieces['join'] .= " LEFT JOIN {$wpdb->prefix}wpbdp_payments ps ON {$wpdb->posts}.ID = ps.listing_id";
+        $pieces['where'] .= $wpdb->prepare( ' AND ps.tag = %s AND ps.status = %s ', 'initial', 'pending' );
+
+        switch ( $filter ) {
+            case 'abandoned':
+                $pieces['where'] .= $wpdb->prepare( ' AND ps.created_on <= %s ', $within_abandonment );
+                break;
+
+            case 'pending-abandonment':
+                $pieces['where'] .= $wpdb->prepare( ' AND ps.created_on > %s AND ps.created_on <= %s ', $within_abandonment, $within_pending );
+                break;
+        }
+
+        return $pieces;
+    }
+
+    /**
+     * @since 3.5.8
+     */
+    public function notify_abandoned_payments() {
+        global $wpdb;
+
+        $threshold = max( 1, absint( wpbdp_get_option( 'payment-abandonment-threshold' ) ) );
+        $time_for_pending = wpbdp_format_time( strtotime( "-{$threshold} hours", current_time( 'timestamp' ) ), 'mysql' );
+        $notified = get_option( 'wpbdp-payment-abandonment-notified', array() );
+
+        if ( ! is_array( $notified ) )
+               $notified = array();
+
+        // For now, we only notify listings with pending INITIAL payments.
+        $to_notify = $wpdb->get_results(
+            $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_payments WHERE status = %s AND tag = %s AND processed_on IS NULL AND created_on < %s ORDER BY created_on",
+                            'pending',
+                            'initial',
+                            $time_for_pending )
+        );
+
+        foreach ( $to_notify as &$data ) {
+            if ( in_array( $data->id, $notified ) )
+                continue;
+
+            $payment = WPBDP_Payment::get( $data->id );
+
+            // Send e-mail.
+            $replacements = array(
+                'listing' => get_the_title( $payment->get_listing_id() ),
+                'link' => sprintf( '<a href="%1$s">%1$s</a>', $payment->get_checkout_url() )
+            );
+
+            $email = wpbdp_email_from_template( 'email-templates-payment-abandoned', $replacements );
+            $email->to[] = wpbusdirman_get_the_business_email( $payment->get_listing_id() );
+            $email->template = 'businessdirectory-email';
+            $email->send();
+
+            $notified[] = $data->id;
+        }
+
+        update_option( 'wpbdp-payment-abandonment-notified', $notified );
+    }
 
 }
 

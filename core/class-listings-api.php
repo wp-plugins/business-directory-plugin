@@ -8,10 +8,10 @@ if ( ! class_exists( 'WPBDP_Listings_API' ) ) {
 class WPBDP_Listings_API {
 
     public function __construct() {
-        add_filter( 'post_type_link', array( &$this, '_post_link' ), 10, 4 );
+        add_filter( 'post_type_link', array( &$this, '_post_link' ), 10, 3 );
         add_filter( 'get_shortlink', array( &$this, '_short_link' ), 10, 4 );
         add_filter('post_type_link', array($this, '_post_link_qtranslate'), 11, 2); // basic support for qTranslate
-        add_filter('preview_post_link', array($this, '_preview_post_link'), 10, 1);
+        add_filter('preview_post_link', array($this, '_preview_post_link'), 10, 2);
 
         add_filter('term_link', array($this, '_category_link'), 10, 3);
         add_filter('term_link', array($this, '_tag_link'), 10, 3);
@@ -59,7 +59,7 @@ class WPBDP_Listings_API {
         return $link;
     }
 
-    public function _post_link( $url, $post = null, $leavename = false, $sample = false ) {
+    public function _post_link( $url, $post = null, $leavename = false ) {
         if ( WPBDP_POST_TYPE != get_post_type( $post ) || ! wpbdp_get_page_id( 'main' ) )
             return $url;
 
@@ -70,19 +70,17 @@ class WPBDP_Listings_API {
         $baseurl = untrailingslashit( wpbdp_get_page_link( 'main' ) );
         $querystring = parse_url( $url, PHP_URL_QUERY );
 
-        if ( $sample && $rewrite ) {
+        if ( $leavename && $rewrite ) {
             return rtrim( wpbdp_get_page_link( 'main' ), '/' ) . '/' . '%' . WPBDP_POST_TYPE . '%' . '/' . ( $querystring ? '?' . $querystring : '' );
         }
-
-//        if ( $leavename ) {
-//            return $url;
-//        }
 
         if ( $rewrite ) {
             if ( wpbdp_get_option( 'permalinks-no-id' ) && $post->post_name )
                 $url = $baseurl . '/' . $post->post_name . '/' . ( $querystring ? '?' . $querystring : '' );
             else
                 $url = $baseurl . '/' . $post->ID . '/' . ( $post->post_name ? $post->post_name . '/' : '' ) . ( $querystring ? '?' . $querystring : '' );
+
+            $url = remove_query_arg( 'p', $url );
         } else {
             $url = add_query_arg( 'id', $post->ID, $baseurl );
         }
@@ -117,7 +115,10 @@ class WPBDP_Listings_API {
         return $url;
     }
 
-    public function _preview_post_link( $url ) {
+    public function _preview_post_link( $url, $post ) {
+        if ( wpbdp_rewrite_on() )
+            $url = remove_query_arg( array( 'post_type', 'p' ), $url );
+
         return $url;
     }
 
@@ -190,6 +191,10 @@ class WPBDP_Listings_API {
         if ( ! $payment->get_data( 'parent_payment_id' ) )
             return;
 
+        global $wpbdp;
+        if ( isset( $wpbdp->_importing_csv_no_email ) && $wpbdp->_importing_csv_no_email )
+            return;
+
         $recurring_item = $payment->get_recurring_item();
 
         $replacements = array();
@@ -206,6 +211,7 @@ class WPBDP_Listings_API {
 
         $email = wpbdp_email_from_template( 'listing-autorenewal-message', $replacements );
         $email->to[] = wpbusdirman_get_the_business_email( $payment->get_listing_id() );
+        $email->template = 'businessdirectory-email';
         $email->send();
     }
 
@@ -219,11 +225,16 @@ class WPBDP_Listings_API {
         if ( $new_status == $old_status || 'publish' != $new_status || ( 'pending' != $old_status && 'draft' != $old_status ) )
             return;
 
+        global $wpbdp;
+        if ( isset( $wpbdp->_importing_csv_no_email ) && $wpbdp->_importing_csv_no_email )
+            return;
+
         $email = wpbdp_email_from_template( 'email-templates-listing-published', array(
             'listing' => get_the_title( $post->ID ),
             'listing-url' => get_permalink( $post->ID )
         ) );
         $email->to[] = wpbusdirman_get_the_business_email( $post->ID );
+        $email->template = 'businessdirectory-email';
         $email->send();
     }
 
@@ -256,15 +267,24 @@ class WPBDP_Listings_API {
         if ( ! in_array( 'new-listing', wpbdp_get_option( 'user-notifications' ), true ) )
             return;
 
+        global $wpbdp;
+        if ( isset( $wpbdp->_importing_csv_no_email ) && $wpbdp->_importing_csv_no_email )
+            return;
+
         $email = wpbdp_email_from_template( 'email-confirmation-message', array(
             'listing' => $listing->get_title()
         ) );
         $email->to[] = wpbusdirman_get_the_business_email( $listing->get_id() );
+        $email->template = 'businessdirectory-email';
         $email->send();
     }
 
    public function new_listing_admin_email( &$listing ) {
         if ( ! in_array( 'new-listing', wpbdp_get_option( 'admin-notifications' ), true ) )
+            return;
+
+        global $wpbdp;
+        if ( isset( $wpbdp->_importing_csv_no_email ) && $wpbdp->_importing_csv_no_email )
             return;
 
         $email = new WPBDP_Email();
@@ -280,6 +300,10 @@ class WPBDP_Listings_API {
 
    public function edit_listing_admin_email( &$listing ) {
         if ( ! in_array( 'listing-edit', wpbdp_get_option( 'admin-notifications' ), true ) )
+            return;
+
+        global $wpbdp;
+        if ( isset( $wpbdp->_importing_csv_no_email ) && $wpbdp->_importing_csv_no_email )
             return;
 
         $email = new WPBDP_Email();
@@ -316,8 +340,10 @@ class WPBDP_Listings_API {
 
         if ( ! $sequence_id ) {
             global $wpdb;
-            $candidate = intval( $wpdb->get_var( $wpdb->prepare( "SELECT (MAX(meta_value) + 1) FROM {$wpdb->postmeta} WHERE meta_key = %s",
+
+            $candidate = intval( $wpdb->get_var( $wpdb->prepare( "SELECT MAX(CAST(meta_value AS UNSIGNED INTEGER )) FROM {$wpdb->postmeta} WHERE meta_key = %s",
                                                                  '_wpbdp[import_sequence_id]' ) ) );
+            $candidate++;
 
             if ( false == add_post_meta( $listing_id, '_wpbdp[import_sequence_id]', $candidate, true ) )
                 $sequence_id = 0;
@@ -507,26 +533,31 @@ class WPBDP_Listings_API {
                                'distinct' => '',
                                'fields' => "{$wpdb->posts}.ID",
                                'limits' => '' );
+        $optimization = array( 'global' => array(), 'words' => array() );
 
-        $words = array_map( 'trim', explode( ' ', $q ) );
+        $words = wpbdp_get_option( 'quick-search-enable-performance-tricks' ) ? array( trim( $q ) ) : array_map( 'trim', explode( ' ', $q ) );
 
         $query_pieces['where'] .= '';
 
         foreach ( $words as $i => $w ) {
+            $optimization['words'][ $i ] = array();
+
             $query_pieces['where'] .= ' AND ( 1=0 ';
 
             foreach ( $fields as &$f ) {
-                $f->build_quick_search_query( $w, $query_pieces, $q, $i );
+                $f->build_quick_search_query( $w, $query_pieces, $q, $i, $optimization );
             }
 
             $query_pieces['where'] .= ' )';
         }
 
         $query_pieces = apply_filters( 'wpbdp_quick_search_query_pieces', $query_pieces );
-        $query = sprintf( "SELECT %s %s FROM {$wpdb->posts} %s WHERE 1=1 %s GROUP BY {$wpdb->posts}.ID %s %s",
+        $query = sprintf( "SELECT %s %s FROM {$wpdb->posts} %s WHERE 1=1 AND ({$wpdb->posts}.post_type = '%s' AND {$wpdb->posts}.post_status = '%s') %s GROUP BY {$wpdb->posts}.ID %s %s",
                           $query_pieces['distinct'],
                           $query_pieces['fields'],
                           $query_pieces['join'],
+                          WPBDP_POST_TYPE,
+                          'publish',
                           $query_pieces['where'],
                           $query_pieces['orderby'],
                           $query_pieces['limits'] );
@@ -540,6 +571,7 @@ class WPBDP_Listings_API {
     public function search($args) {
         global $wpdb;
 
+        $args = stripslashes_deep( $args );
         $term = str_replace('*', '', trim(wpbdp_getv($args, 'q', '')));
 
         if (!$term && (!isset($args['fields']) || !$args['fields']) && (!isset($args['extra']) || !$args['extra']) )
@@ -706,6 +738,7 @@ class WPBDP_Listings_API {
 
         $email = wpbdp_email_from_template( $message_option, $message_replacements );
         $email->to[] = wpbusdirman_get_the_business_email( $fee_info->listing_id );
+        $email->template = 'businessdirectory-email';
         $email->send();
 
         return true;
@@ -729,6 +762,8 @@ class WPBDP_Listings_API {
         $now_date = wpbdp_format_time( $now, 'mysql' );
 
         if ( $threshold == 0 ) {
+            $this->notify_expired_listings_recurring( $now );
+
             $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE recurring = %d AND expires_on IS NOT NULL AND expires_on < %s AND email_sent <> %d AND email_sent <> %d ORDER BY expires_on LIMIT 100",
                                      0,
                                      $now_date,
@@ -811,6 +846,7 @@ class WPBDP_Listings_API {
                         $email->cc[] = wpbdp_get_option( 'admin-notifications-cc' );
                 }
 
+                $email->template = 'businessdirectory-email';
                 $email->send();
 
                 $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 2 ), array( 'id' => $r->id ) );
@@ -819,6 +855,7 @@ class WPBDP_Listings_API {
                 $email = wpbdp_email_from_template( ( $r->recurring ? 'listing-autorenewal-notice' : 'renewal-pending-message' ),
                                                     $message_replacements );
                 $email->to[] = wpbusdirman_get_the_business_email( $listing->get_id() );
+                $email->template = 'businessdirectory-email';
                 $email->send();
 
                 $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 1 ), array( 'id' => $r->id ) );
@@ -826,6 +863,7 @@ class WPBDP_Listings_API {
                 // remind about expired listings
                 $email = wpbdp_email_from_template( 'renewal-reminder-message', $message_replacements );
                 $email->to[] = wpbusdirman_get_the_business_email( $listing->get_id() );
+                $email->template = 'businessdirectory-email';
                 $email->send();
 
                 $wpdb->update( "{$wpdb->prefix}wpbdp_listing_fees", array( 'email_sent' => 3 ), array( 'id' => $r->id ) );
@@ -833,6 +871,29 @@ class WPBDP_Listings_API {
         }
 
     }
+
+    private function notify_expired_listings_recurring( $now ) {
+        global $wpdb, $wpbdp;
+
+        $now_date = wpbdp_format_time( $now, 'mysql' );
+
+        $query = $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}wpbdp_listing_fees WHERE recurring = %d AND expires_on IS NOT NULL AND expires_on < %s ORDER BY expires_on LIMIT 100",
+                1,
+                $now_date );
+        $rs = $wpdb->get_results( $query );
+
+        foreach ( $rs as $r ) {
+            $recurring_id = $r->recurring_id;
+            $data = unserialize( $r->recurring_data );
+
+            if ( ! isset( $data['payment_id'] ) )
+                continue;
+
+            $wpbdp->payments->process_recurring_expiration( $data['payment_id'] );
+        }
+    }
+
+
 
 }
 
