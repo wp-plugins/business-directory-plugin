@@ -8,7 +8,7 @@
            'delete listing',
            'WPBDM' ); ?><br />
 <b><?php echo str_replace( '<a>',
-                        '<a href="' . add_query_arg( 'action', 'manage-recurring', wpbdp_get_page_link( 'main' ) ) . '">',
+                        '<a href="' . esc_url( add_query_arg( 'action', 'manage-recurring', wpbdp_get_page_link( 'main' ) ) ) . '">',
                         _x( 'Please visit <a>Manage recurring payments</a> to review your current recurring payments.', 'delete listing', 'WPBDM' ) ); ?></b>
 </div>
 <?php endif; ?>
@@ -21,7 +21,7 @@
 
 <?php wp_nonce_field( 'delete listing ' . $listing->get_id() ); ?>
 
-<input type="button" value="<?php _ex('No. Take me back to the directory.', 'delete listing', 'WPBDM' ); ?>" />
+<input type="button" onclick="location.href = '<?php echo wpbdp_get_page_link( 'main'); ?>'; return false;" value="<?php _ex('No. Take me back to the directory.', 'delete listing', 'WPBDM' ); ?>" />
 <input class="delete-listing-confirm" type="submit" value="<?php _ex( 'Yes. Delete my listing.', 'delete listing', 'WPBDM' ); ?>" />
 </form>
 

@@ -30,7 +30,7 @@ class WPBDP_DirectoryController {
     }
 
     public function _handle_action(&$wp) {
-        if ( is_page() && in_array( get_the_ID(), wpbdp_get_page_id( 'main', false ) ) ) {
+        if ( is_page() && in_array( get_the_ID(), wpbdp_get_page_ids( 'main' ) ) ) {
             $action = get_query_var('action') ? get_query_var('action') : ( isset( $_REQUEST['action'] ) ? $_REQUEST['action'] : '' );
 
             if (get_query_var('category_id') || get_query_var('category')) $action = 'browsecategory';
@@ -188,6 +188,7 @@ class WPBDP_DirectoryController {
         $listings_api = wpbdp_listings_api();
 
         query_posts(array(
+            'wpbdp_action' => 'browsecategory',
             'post_type' => WPBDP_POST_TYPE,
             'post_status' => 'publish',
             'posts_per_page' => wpbdp_get_option( 'listings-per-page' ) > 0 ? wpbdp_get_option( 'listings-per-page' ) : -1,

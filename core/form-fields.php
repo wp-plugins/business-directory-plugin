@@ -40,7 +40,7 @@ class WPBDP_FormFields {
         // register core field types
         $this->register_field_type( 'WPBDP_FieldTypes_TextField', 'textfield' );
         $this->register_field_type( 'WPBDP_FieldTypes_Select', 'select' );
-        $this->register_field_type( 'WPBDP_FieldTypes_URL', 'url' );        
+        $this->register_field_type( 'WPBDP_FieldTypes_URL', 'url' );
         $this->register_field_type( 'WPBDP_FieldTypes_TextArea', 'textarea' );
         $this->register_field_type( 'WPBDP_FieldTypes_RadioButton', 'radio' );
         $this->register_field_type( 'WPBDP_FieldTypes_MultiSelect', 'multiselect' );
@@ -49,6 +49,7 @@ class WPBDP_FormFields {
         $this->register_field_type( 'WPBDP_FieldTypes_Facebook', 'social-facebook' );
         $this->register_field_type( 'WPBDP_FieldTypes_LinkedIn', 'social-linkedin' );
         $this->register_field_type( 'WPBDP_FieldTypes_Image', 'image' );
+        $this->register_field_type( 'WPBDP_FieldTypes_Date', 'date' );
     }
 
     /**
@@ -331,6 +332,9 @@ class WPBDP_FormFields {
             $names = $this->_calculate_short_names();
 
         if ( $fieldid ) {
+            if ( ! isset( $names[ $fieldid ] ) )
+                $names = $this->_calculate_short_names();
+
             return isset( $names[ $fieldid ] ) ? $names[ $fieldid ] : null;
         }
 
@@ -342,14 +346,12 @@ class WPBDP_FormFields {
         $names = array();
 
         foreach ( $fields as $field ) {
-            $name = strtolower( $field->get_label() );
-            $name = str_replace( array( ',', ';' ), '', $name );
-            $name = str_replace( array( ' ', '/' ), '-', $name );
-
+            $name = WPBDP_Form_Field_Type::normalize_name( $field->get_label() );
+ 
             if ( $name == 'images' || $name == 'image' || $name == 'username' || $name == 'featured_level' || $name == 'expires_on' || $name == 'sequence_id' || in_array( $name, $names, true ) ) {
-                $name = $field->get_id() . '/' . $name;
+                $name = $name . '-' . $field->get_id();
             }
-            
+
             $names[ $field->get_id() ] = $name;
         }
 
@@ -484,13 +486,47 @@ class WPBDP_FieldValidation {
 
     /* DateValidator */
     private function date_( $value, $args=array() ) {
-        $args = wp_parse_args( $args, array( 'format' => 'm/d/Y' ) );
+        $args = wp_parse_args( $args, array( 'format' => 'dd/mm/yyyy' ) );
+        $format = $args['format'];
 
-        // TODO: validate with format
-        list( $m, $d, $y ) = explode( '/', $value );
+        // Normalize separators.
+        $format_ = str_replace( array( '/', '.', '-' ), '', $format );
+        $value_ = str_replace( array( '/', '.', '-' ), '', $value );
 
-        if ( !is_numeric( $m ) || !is_numeric( $d ) || !is_numeric( $y ) || !checkdate( $m, $d, $y ) )
-            return WPBDP_ValidationError( sprintf( _x( '%s must be in the format MM/DD/YYYY.', 'form-fields-api validation', 'WPBDM' ), esc_attr( $args['field-label'] ) ) );
+        if ( strlen( $format_ ) != strlen( $value_ ) )
+            return WPBDP_ValidationError( sprintf( _x( '%s must be in the format %s.', 'form-fields-api validation', 'WPBDM' ),
+                                                   esc_attr( $args['field-label'] ),
+                                                   $format  ) );
+
+        $d = 0; $m = 0; $y = 0;
+
+        switch ( $format_ ) {
+            case 'ddmmyy':
+                $d = substr( $value_, 0, 2 );
+                $m = substr( $value_, 2, 2 );
+                $y = substr( $value_, 4, 2 );
+                break;
+            case 'ddmmyyyy':
+                $d = substr( $value_, 0, 2 );
+                $m = substr( $value_, 2, 2 );
+                $y = substr( $value_, 4, 4 );
+                break;
+            case 'mmddyy':
+                $m = substr( $value_, 0, 2 );
+                $d = substr( $value_, 2, 2 );
+                $y = substr( $value_, 4, 2 );
+                break;
+            case 'mmddyyyy':
+                $m = substr( $value_, 0, 2 );
+                $d = substr( $value_, 2, 2 );
+                $y = substr( $value_, 4, 4 );
+                break;
+            default:
+                break;
+        }
+
+        if ( ! is_numeric( $m ) || ! is_numeric( $d ) || ! is_numeric( $y ) || ! checkdate( $m, $d, $y ) )
+            return WPBDP_ValidationError( sprintf( _x( '%s must be a valid date.', 'form-fields-api validation', 'WPBDM' ), esc_attr( $args['field-label'] ) ) );
     }
 
     private function any_of( $value, $args=array() ) {

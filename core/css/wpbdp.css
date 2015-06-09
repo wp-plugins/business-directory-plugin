@@ -237,12 +237,13 @@ form#wpbdmsearchform a.advanced-search-link {
 }
 
 .wpbdp-listing .social-field {
-    float: left;
-    margin-right: 10px;
+    margin: 5px 0;
+    height: 30px;
+    vertical-align: middle;
 }
 
 /* Work-around a known FB like button CSS issue (http://stackoverflow.com/questions/8311012/facebook-like-button-dialog-overflow-issue) */
-.social-field.facebook .fb-like span {
+.social-field.facebook .fb-like > span {
     overflow: visible !important;
     width: 450px !important;
     margin-right: -375px;
@@ -282,7 +283,6 @@ form#wpbdmsearchform a.advanced-search-link {
 
 .wpbdp-bar .wpbdp-main-links {
     float: left;
-    height: 100%;
 }
 
 .wpbdp-bar .wpbdp-search-form {
@@ -336,6 +336,7 @@ ul.wpbdp-categories > li {
 @media screen and (max-width: 704px) {
     ul.wpbdp-categories > li {
         float: none;
+        width: initial;
     }
 }
 
@@ -604,16 +605,16 @@ table#wpbdp-manage-recurring a.cancel-subscription {
 
 /* {{ Mobile CSS. */
 .wpbdp-show-on-mobile {
-    display: none;
+    display: none !important;
 }
 
 @media screen and (max-width: 500px) {
     .wpbdp-show-on-mobile {
-        display: inline;
+        display: inline !important;
     }
 
     .wpbdp-hide-on-mobile {
-        display: none;
+        display: none !important;
     }
 
     .wpbdp-bar .wpbdp-main-links {
@@ -718,3 +719,4 @@ table#wpbdp-manage-recurring a.cancel-subscription {
 }
 
 /* }} */
+

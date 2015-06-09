@@ -20,7 +20,28 @@ jQuery(document).ready(function($){
         var selected = $(this).val();
         location.href = selected;
     });
+});
 
+jQuery(function( $ ) {
+
+    var form_fields = {
+        init: function() {
+            var t = this;
+
+            $( '.wpbdp-form-field-type-date' ).each(function(i, v) {
+                t.configure_date_picker( $(v).find( 'input' ) );
+            });
+        },
+
+        configure_date_picker: function( $e ) {
+            $e.datepicker({
+                dateFormat: $e.attr( 'data-date-format' ),
+                defaultDate: $e.val()
+            });
+        }
+    };
+
+    form_fields.init();
 });
 
 WPBDP.fileUpload = {
@@ -148,6 +169,14 @@ WPBDP.fileUpload = {
                     return ( t._slotsRemaining - data.files.length ) >= 0;
                 },
                 done: function( res ) {
+                    var uploadErrors = ( 'undefined' !== typeof res.data.uploadErrors ) ? res.data.uploadErrors : false;
+
+                    if ( uploadErrors ) {
+                        var errorMsg = $( '<div>' ).addClass('wpbdp-msg error').html( res.data.uploadErrors );
+                        $( '.area-and-conditions' ).prepend( errorMsg );
+                        return;
+                    }
+
                     $( '#no-images-message' ).hide();
                     $( '#wpbdp-uploaded-images' ).append( res.data.html );
 
@@ -160,9 +189,6 @@ WPBDP.fileUpload = {
                         $( '#image-upload-dnd-area' ).addClass('error');
                         $( '#image-upload-dnd-area .dnd-area-inside' ).hide();
                         $( '#image-upload-dnd-area .dnd-area-inside-error' ).show();
-                    } else if ( 'undefined' !== typeof res.data.uploadErrors ) {
-                        var errorMsg = $( '<div>' ).addClass('wpbdp-msg error').html( res.data.uploadErrors );
-                        $( '.area-and-conditions' ).prepend( errorMsg );
                     }
                 }
             } );

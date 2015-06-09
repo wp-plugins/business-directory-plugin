@@ -54,7 +54,13 @@ class WPBDP_Checkout_Page extends WPBDP_View {
 
         // Auto-select gateway if there is only one available.
         $gateways = $wpbdp->payments->get_available_methods();
-        if ( 1 == count( $gateways ) ) {
+        $skip_gateway_selection = false;
+
+        if ( 1 == count( $gateways ) )
+            $skip_gateway_selection = true;
+
+        $skip_gateway_selection = apply_filters( 'wpbdp_checkout_skip_gateway_selection', $skip_gateway_selection );
+        if ( $skip_gateway_selection ) {
             $this->payment->set_payment_method( array_pop( $gateways ) );
             $this->payment->save();
             return $this->checkout();
@@ -62,6 +68,10 @@ class WPBDP_Checkout_Page extends WPBDP_View {
 
         $html  = '';
         do_action_ref_array( 'wpbdp_checkout_page_process', array( &$this->payment ) );
+
+        // Check if the payment changed in case we need to update something.
+        if ( 0.0 == $this->payment->get_total() )
+            return $this->dispatch();
 
         if ( isset( $_POST['payment_method'] ) ) {
             $payment_method = trim( $_POST['payment_method'] );
@@ -89,7 +99,7 @@ class WPBDP_Checkout_Page extends WPBDP_View {
         if ( ! is_ssl() && wpbdp_get_option( 'payments-use-https' ) ) {
             return wpbdp_render_msg(
                     str_replace( '<a>',
-                                 '<a href="' . $this->payment->get_checkout_url() . '">',
+                                 '<a href="' . esc_url( $this->payment->get_checkout_url() ) . '">',
                                  _x( 'Payments are not allowed on the non-secure version of this site. Please <a>continue to the secure server to proceed with your payment</a>.', 'checkout', 'WPBDM' ) ),
                     'error'
             );

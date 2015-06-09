@@ -59,8 +59,8 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
     }
 
     public function process( &$payment, $action ) {
-        if ( ! $this->validate_billing_information( $payment, $errors ) ) {
-            wp_redirect( $payment->get_checkout_url() );
+        if ( ! $this->validate_billing_information( $payment ) ) {
+            wp_redirect( esc_url_raw( $payment->get_checkout_url() ) );
             die();
         }
 
@@ -132,7 +132,7 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
 
         $payment->save();
 
-        wp_redirect( $payment->get_redirect_url() ); die();
+        wp_redirect( esc_url_raw( $payment->get_redirect_url() ) ); die();
     }
 
     private function process_recurring( &$payment ) {
@@ -183,7 +183,7 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
         }
 
         $payment->save();
-        wp_redirect( $payment->get_redirect_url() );
+        wp_redirect( esc_url_raw( $payment->get_redirect_url() ) );
     }
 
     public function handle_expiration( $payment ) {
