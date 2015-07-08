@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.9
 Tested up to: 4.2.2
-Last Updated: 2015-Jun-9
-Stable tag: tags/3.6.5
+Last Updated: 2015-Jul-7
+Stable tag: tags/3.6.6
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -29,7 +29,7 @@ Business Directory Plugin allows you to build local directories, business provid
 * Users who post can edit listings without access to WP dashboard
 * SEO Friendly using Yoast SEO
 * Configurable quick-search field and sorting bar for listings
-* Rate businesses in your directory (now with Microformat support) (using the Ratings Module)
+* Rate businesses in your directory (now with Schema.org microformat support) (using the Ratings Module)
 * Display the location of the business (categories, search, details--now with custom map sizes) (using the Google Maps Module)
 * Location based result filtering (using the Regions Module)
 * ZIP code radius searches (using the ZIP Search Module)
@@ -41,6 +41,7 @@ Business Directory Plugin allows you to build local directories, business provid
 * Accept payments using PayFast (using the PayFast Gateway Module)
 * Post claimable listings that other businesses can pay (or not) to claim (using the Claim Listings Module) (NEW!)
 * FULL responsive support when installed with a responsive theme (NEW!)
+* Integrates with popular plugins like Yoast SEO, NavXT Breadcrumbs and WP-PageNavi for easy use
 
 For a complete and detailed list of features, please visit:  http://businessdirectoryplugin.com/features/
  
@@ -113,6 +114,18 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 == Changelog ==
 
+= Version 3.6.6 =
+* Added full French translation
+* Added full Polish translation
+* New reCAPTCHA version and library.
+* Support use of language-specific URLs for WPML
+* Add ZIP code field to billing information page
+* Update bundled version of Auth.net SDK
+* Fix date field issue resulting in PHP warnings
+* Add French postal code database to ZIP search module
+* Fixed sidebar issues on Google Maps with unclosed tag
+* Fixed Regions bug to be consistent on selector and sidelist for hiding empty regions
+
 = Version 3.6.5 =
 * Added full French translation
 * Add support for NavXT breadcrumbs plugin 
@@ -152,15 +165,15 @@ If you are having problems please visit [support forum](http://www.businessdirec
 = Version 3.6 =
 * Added Authorize.net as the default (free) payment gateway, replacing Google Wallet which was discontinued in March 2015.
 * Dropped support for Google Wallet for Business (http://www.businessnewsdaily.com/7468-google-wallet-discontinued.html)
-* Added "AJAX compatibility mode" to help with Javascript/AJAX conflicts.
+* Added "AJAX compatibility mode" to help with JavaScript/AJAX conflicts.
 * New sequential CSV import process that improves performance and reliability especially for large imports.
 * Added new German translation to core plugin
 * Improved display on mobile devices (full responsive support).
 * Work around some themes not firing some of the hooks for the comments form.
 * Improved quick search performance by reducing the number of JOINs required.
 * Added an optional quick search mode that increases performance by reducing search accuracy (shared hosting support).
-* Preprend 'http://' to data entered into URL fields automatically.
-* Apply strip_slashes() to multivalued field options.
+* Prepend 'http://' to data entered into URL fields automatically.
+* Apply strip_slashes() to multi-valued field options.
 * Add setting that allows admins to automatically remind users of abandoned payments.
 * Allow setting the post status for listings imported via CSV.
 * Allow users to upload CSV and ZIP files for CSV imports via FTP.

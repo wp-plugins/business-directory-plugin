@@ -509,7 +509,11 @@ class WPBDP_FieldTypes_TextArea extends WPBDP_Form_Field_Type {
             if ( $field->data( 'allow_filters' ) ) {
                 $value = apply_filters( 'the_content', $value );
             } elseif ( $field->data( 'allow_shortcodes' ) ) {
+                global $post;
+                // Try to protect us from sortcodes messing things for us.
+                $current_post = $post;
                 $value = do_shortcode( nl2br( $value ) );
+                $post = $current_post;
             } else {
                 $value = nl2br( $value );
             }
@@ -1234,7 +1238,7 @@ class WPBDP_FieldTypes_Date extends WPBDP_FieldTypes_TextField {
         return $formats;
     }
 
-    private function date_format( &$field, $full_info ) {
+    private function date_format( &$field, $full_info = false ) {
         if ( $full_info ) {
             $formats = $this->get_formats();
             $format = $this->date_format( $field, false );

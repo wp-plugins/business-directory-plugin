@@ -83,6 +83,8 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
 
         if ( wpbdp_get_option( 'payments-test-mode' ) )
             $aim->setSandbox( true );
+        else
+            $aim->setSandbox( false );
 
         // Order info.
         $aim->setFields( array(
@@ -105,7 +107,8 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
             'address' => $data['address_line1'],
             'city' => $data['address_city'],
             'state' => $data['address_state'],
-            'country' => $data['address_country']
+            'country' => $data['address_country'],
+            'zip' => $data['zipcode']
         ));
         // TODO: maybe add zip, phone, email and cust_id
 
@@ -143,6 +146,8 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
 
         if ( wpbdp_get_option( 'payments-test-mode' ) )
             $arb->setSandbox( true );
+        else
+            $arb->setSandbox( false );
 
         $recurring_item = $payment->get_recurring_item();
         //wpbdp_debug_e( $recurring_item );
@@ -165,6 +170,7 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
         $s->billToCity = $data['address_city'];
         $s->billToState = $data['address_state'];
         $s->billToCountry = $data['address_country'];
+        $s->billToZip = $data['zipcode'];
 
         $s->orderInvoiceNumber = $payment->get_id();
         $s->orderDescription = $payment->get_short_description();
@@ -203,6 +209,8 @@ class WPBDP_Authorize_Net_Gateway extends WPBDP_Payment_Gateway {
 
         if ( wpbdp_get_option( 'payments-test-mode' ) )
             $arb->setSandbox( true );
+        else
+            $arb->setSandbox( false );
 
         $response = $arb->getSubscriptionStatus( $recurring_id );
         $status = $response->isOk() ? $response->getSubscriptionStatus() : '';
