@@ -4,8 +4,8 @@ Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.9
 Tested up to: 4.2.2
-Last Updated: 2015-Jul-7
-Stable tag: tags/3.6.6
+Last Updated: 2015-Jul-13
+Stable tag: tags/3.6.7
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -21,7 +21,7 @@ Business Directory Plugin allows you to build local directories, business provid
 = Features =
 * Fully customizable form fields
 * Accept payment for listings OR have free listings
-* Full support for recurring payments (PayPal, Wallet, Stripe)
+* Full support for recurring payments (PayPal, Authorize.net, Stripe)
 * Allow for featured/sticky listings for an upgrade fee
 * Create multiple fee plans, which can be assigned to categories for posting
 * Built in CSV import and export
@@ -113,6 +113,9 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 
 == Changelog ==
+
+= Version 3.6.7 =
+* Removed namespace support from new reCAPTCHA library to support PHP 5.2 and 5.3
 
 = Version 3.6.6 =
 * Added full French translation
