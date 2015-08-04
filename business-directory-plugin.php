@@ -3,7 +3,7 @@
  * Plugin Name: Business Directory Plugin
  * Plugin URI: http://www.businessdirectoryplugin.com
  * Description: Provides the ability to maintain a free or paid business directory on your WordPress powered site.
- * Version: 3.6.7
+ * Version: 3.6.8
  * Author: D. Rodenbaugh
  * Author URI: http://businessdirectoryplugin.com
  * License: GPLv2 or any later version
@@ -29,7 +29,7 @@
 if( preg_match( '#' . basename( __FILE__ ) . '#', $_SERVER['PHP_SELF'] ) )
     exit();
 
-define( 'WPBDP_VERSION', '3.6.7' );
+define( 'WPBDP_VERSION', '3.6.8' );
 
 define( 'WPBDP_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WPBDP_URL', trailingslashit( plugins_url( '/', __FILE__ ) ) );
@@ -56,6 +56,7 @@ require_once( WPBDP_PATH . 'core/installer.php' );
 require_once( WPBDP_PATH . 'core/views.php' );
 require_once( WPBDP_PATH . 'core/licensing.php' );
 require_once( WPBDP_PATH . 'core/seo.php' );
+require_once( WPBDP_PATH . 'core/class-recaptcha.php' );
 
 
 global $wpbdp;
@@ -203,11 +204,7 @@ class WPBDP_Plugin {
         add_filter( 'wpbdp_query_fields', array( &$this, 'sortbar_query_fields' ) );
         add_filter( 'wpbdp_query_orderby', array( &$this, 'sortbar_orderby' ) );
 
-        // Enable reCAPTCHA if needed.
-        if ( wpbdp_get_option( 'recaptcha-on' ) || wpbdp_get_option( 'recaptcha-for-submits' ) || wpbdp_get_option( 'recaptcha-for-comments' ) ) {
-            require_once( WPBDP_PATH . 'core/class-recaptcha.php' );
-            $this->recaptcha = new WPBDP_reCAPTCHA();
-        }
+        $this->recaptcha = new WPBDP_reCAPTCHA();
     }
 
     // {{{ Premium modules.
@@ -283,7 +280,7 @@ class WPBDP_Plugin {
         if ( is_admin() || ! isset( $query->query_vars['post_type'] ) || WPBDP_POST_TYPE != $query->query_vars['post_type'] )
             return $pieces;
 
-        return apply_filters( 'wpbdp_query_clauses', $pieces );
+        return apply_filters( 'wpbdp_query_clauses', $pieces, $query );
     }
 
     public function _posts_fields($fields, $query) {
@@ -741,8 +738,6 @@ class WPBDP_Plugin {
 
     public function has_module($name) {
         switch (strtolower($name)) {
-            default:
-                break;
             case 'payfast':
             case 'payfast-payment-module':
                 return class_exists( 'WPBDP_Gateways_PayFast' );
@@ -792,6 +787,11 @@ class WPBDP_Plugin {
                 break;
             case 'claim-listings-module':
                 return class_exists( 'WPBDP_Claim_Listings_Module' );
+                break;
+            case 'discount-codes-module':
+                return class_exists( 'WPBDP_Coupons_Module' );
+                break;
+            default:
                 break;
         }
 

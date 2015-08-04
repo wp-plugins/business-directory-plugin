@@ -19,10 +19,17 @@ class WPBDP_WPML_Compat {
             add_filter( 'wpbdp_category_fee_selection_label', array( &$this, 'translate_fee_label' ), 10, 2 );
 
             add_filter( 'icl_ls_languages', array( &$this, 'language_switcher' ) );
+
+            // Regions.
+            add_filter( 'wpbdp_region_link', array( &$this, 'add_lang_to_link' ) );
         }
 
         add_action( 'admin_footer-directory-admin_page_wpbdp_admin_formfields', array( &$this, 'register_form_fields_strings' ) );
         add_action( 'admin_footer-directory-admin_page_wpbdp_admin_fees', array( &$this, 'register_fees_strings' ) );
+
+        // Regions.
+        add_filter( 'wpbdp_regions__get_hierarchy_option', array( &$this, 'use_cache_per_lang' ) );
+        add_action( 'wpbdp_regions_clean_cache', array( &$this, 'clean_cache_per_lang' ) );
     }
 
     function get_current_language() {
@@ -45,7 +52,18 @@ class WPBDP_WPML_Compat {
     function add_lang_to_link( $link ) {
         global $sitepress;
 
-        $lang = $this->get_current_language();
+        $lang = '';
+
+        if ( false !== ($index = strpos( $link, '?' ) ) ) {
+            // We honor the ?lang argument from the link itself (if present).
+            $data = array();
+            wp_parse_str( substr( $link, $index + 1 ), $data );
+
+            if ( !empty( $data['lang'] ) )
+                $lang = $data['lang'];
+        } else {
+           $lang = $this->get_current_language();
+        }
 
         if ( ! $lang )
             return $link;
@@ -239,6 +257,31 @@ class WPBDP_WPML_Compat {
         return icl_t( 'Business Directory Plugin',
                       sprintf( 'Fee label (#%d)', $fee->id ),
                       $fee->label );
+    }
+
+    // }}}
+
+    // Regions. {{{
+    function use_cache_per_lang( $option ) {
+        $lang = $this->get_current_language();
+
+        if ( ! $lang )
+            return $option;
+
+        return $option . '-' . $lang;
+    }
+
+    function clean_cache_per_lang( $opt ) {
+        $langs = icl_get_languages( 'skip_missing=0' );
+
+        if ( ! $langs )
+            return;
+
+        foreach ( $langs as $l ) {
+            $code = $l['language_code'];
+
+            delete_option( $opt . '-' . $code );
+        }
     }
 
     // }}}

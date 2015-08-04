@@ -3,9 +3,9 @@ Contributors: businessdirectoryplugin
 Donate link: http://businessdirectoryplugin.com/premium-modules/
 Tags: wordpress directory,wordpress directory plugin, wordpress directory theme,wordpress business directory,business directory,classified ads,classifieds,directory plugin,business directory plugin,directory widget,church directory,address book,address,member directory,members directory,city portal,city portal plugin,city guide plugin,city guide
 Requires at least: 3.9
-Tested up to: 4.2.2
-Last Updated: 2015-Jul-13
-Stable tag: tags/3.6.7
+Tested up to: 4.2.4
+Last Updated: 2015-Aug-4
+Stable tag: tags/3.6.8
 License: GPLv2 or later
 
 Build local directories, business provider listings, Yellow-Pages directories, Yelp-like review sections and much more! 
@@ -42,6 +42,7 @@ Business Directory Plugin allows you to build local directories, business provid
 * Post claimable listings that other businesses can pay (or not) to claim (using the Claim Listings Module) (NEW!)
 * FULL responsive support when installed with a responsive theme (NEW!)
 * Integrates with popular plugins like Yoast SEO, NavXT Breadcrumbs and WP-PageNavi for easy use
+* Ability to offer discount codes based on a % or fixed amount with expirations (using the Discount Codes Module) (NEW!)
 
 For a complete and detailed list of features, please visit:  http://businessdirectoryplugin.com/features/
  
@@ -51,11 +52,13 @@ Please report any bugs you find via http://businessdirectoryplugin.com/support-f
 These are optional modules that you can use to enhance Business Directory Plugin's functionality and
 support future development:
 
+NEW! [Discount Codes Module](http://businessdirectoryplugin.com/downloads/discount-codes-module/?ref=wp)
+
 NEW! [Claim Listings Module](http://businessdirectoryplugin.com/downloads/claim-listings-module/?ref=wp)
 
-NEW! [PayFast Gateway Module](http://businessdirectoryplugin.com/downloads/payfast-payment-module/?ref=wp)
+[PayFast Gateway Module](http://businessdirectoryplugin.com/downloads/payfast-payment-module/?ref=wp)
 
-NEW! [Stripe Gateway Module](http://businessdirectoryplugin.com/downloads/stripe-payment-module/?ref=wp)
+[Stripe Gateway Module](http://businessdirectoryplugin.com/downloads/stripe-payment-module/?ref=wp)
 
 [File Upload Module](http://businessdirectoryplugin.com/downloads/file-attachments-module/?ref=wp)
 
@@ -114,11 +117,19 @@ If you are having problems please visit [support forum](http://www.businessdirec
 
 == Changelog ==
 
+= Version 3.6.8 =
+* Added support for Discount Codes module
+* Translation file updates (all)
+* Minor fix for mobile devices.
+* Fix reCAPTCHA conflict with Claim Listings.
+* Fix a pagination issue when pagination was disabled.
+* Fixed URL capitalization filter issue to allow mixed-case URLs with parameters
+	
 = Version 3.6.7 =
 * Removed namespace support from new reCAPTCHA library to support PHP 5.2 and 5.3
 
 = Version 3.6.6 =
-* Added full French translation
+* Updated full French translation
 * Added full Polish translation
 * New reCAPTCHA version and library.
 * Support use of language-specific URLs for WPML
